@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Robot Arm - Grab a Ball</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 24px; color: #1f2937; }
+        canvas { display: block; border: 1px solid #9ca3af; max-width: 100%; height: auto; background: #f8fafc; cursor: crosshair; }
+        button { padding: 9px 13px; margin: 4px 2px; font: inherit; cursor: pointer; }
+        .controls { margin-top: 12px; }
+        #status { margin-top: 10px; min-height: 1.4em; }
+    </style>
+</head>
+<body>
+    <h2>Robot Arm — Grab a Ball</h2>
+    <p><b>A / D</b> = shoulder &nbsp; <b>J / L</b> = elbow &nbsp; <b>Space</b> = grab / release &nbsp; <b>R</b> = reset</p>
+    <p>Click anywhere on the canvas to move the ball. Try pressing Space first: the ball starts near the claw.</p>
+
+    <canvas id="canvas" width="600" height="400"></canvas>
+
+    <div class="controls">
+        <button id="shoulderLeft">A — Shoulder −</button>
+        <button id="shoulderRight">D — Shoulder +</button>
+        <button id="elbowLeft">J — Elbow −</button>
+        <button id="elbowRight">L — Elbow +</button>
+        <button id="grab">Grab / Release</button>
+        <button id="reset">Reset</button>
+    </div>
+    <p id="status" role="status">Move the claw close to the ball, then press Space.</p>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const status = document.getElementById('status');
+
+        const base = [220, 310];
+        const upperLength = 120;
+        const forearmLength = 100;
+        const ballRadius = 12;
+        const step = 5 * Math.PI / 180;
+
+        let shoulderAngle = -55 * Math.PI / 180;
+        let elbowAngle = 70 * Math.PI / 180;
+        let ball = [398, 231];
+        let holding = false;
+
+        function clearCanvas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+
+        function drawLine(x1, y1, x2, y2) {
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.stroke();
+        }
+
+        function drawCircle(x, y, radius) {
+            ctx.beginPath();
+            ctx.arc(x, y, radius, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+
+        function rotationMatrix(angle) {
+            const cos = Math.cos(angle);
+            const sin = Math.sin(angle);
+            return [
+                [cos, -sin, 0],
+                [sin,  cos, 0],
+                [0, 0, 1]
+            ];
+        }
+
+        function translationMatrix(x, y) {
+            return [
+                [1, 0, x],
+                [0, 1, y],
+                [0, 0, 1]
+            ];
+        }
+
+        function multiplyMatrices(A, B) {
+            const result = [
+                [0, 0, 0],
+                [0, 0, 0],
+                [0, 0, 0]
+            ];
+            for (let row = 0; row < 3; row++) {
+                for (let col = 0; col < 3; col++) {
+                    for (let k = 0; k < 3; k++) {
+                        result[row][col] += A[row][k] * B[k][col];
+                    }
+                }
+            }
+            return result;
+        }
+
+        function transformPoint(point, matrix) {
+            const [x, y] = point;
+            return [
+                x * matrix[0][0] + y * matrix[0][1] + matrix[0][2],
+                x * matrix[1][0] + y * matrix[1][1] + matrix[1][2]
+            ];
+        }
+
+        function getArmPose() {
+            // Parent transform: the entire arm follows the shoulder.
+            const shoulderMatrix = multiplyMatrices(
+                translationMatrix(base[0], base[1]),
+                rotationMatrix(shoulderAngle)
+            );
+            const elbow = transformPoint([upperLength, 0], shoulderMatrix);
+
+            // Child transform: the forearm follows the shoulder AND elbow.
+            const elbowMatrix = multiplyMatrices(
+                shoulderMatrix,
+                translationMatrix(upperLength, 0)
+            );
+            const forearmMatrix = multiplyMatrices(
+                elbowMatrix,
+                rotationMatrix(elbowAngle)
+            );
+            const hand = transformPoint([forearmLength, 0], forearmMatrix);
+
+            // A small frame at the hand; local +X points forward from the wrist.
+            const clawMatrix = multiplyMatrices(
+                forearmMatrix,
+                translationMatrix(forearmLength, 0)
+            );
+            const gripPoint = transformPoint([13, 0], clawMatrix);
+            return { elbow, hand, clawMatrix, gripPoint };
+        }
+
+        function drawBall() {
+            ctx.fillStyle = '#f97316';
+            ctx.strokeStyle = '#c2410c';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(ball[0], ball[1], ballRadius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+        }
+
+        function drawClaw(matrix) {
+            const gap = holding ? 12 : 18;
+            const topStart = transformPoint([0, -gap], matrix);
+            const topEnd = transformPoint([26, -gap], matrix);
+            const bottomStart = transformPoint([0, gap], matrix);
+            const bottomEnd = transformPoint([26, gap], matrix);
+
+            ctx.strokeStyle = '#334155';
+            ctx.lineWidth = 5;
+            drawLine(...topStart, ...topEnd);
+            drawLine(...bottomStart, ...bottomEnd);
+        }
+
+        function action() {
+            clearCanvas();
+            const pose = getArmPose();
+
+            // While grabbed, the ball is attached to the moving claw.
+            if (holding) {
+                ball = [...pose.gripPoint];
+            }
+
+            ctx.strokeStyle = '#94a3b8';
+            ctx.lineWidth = 2;
+            drawLine(0, 365, canvas.width, 365);
+
+            ctx.fillStyle = '#64748b';
+            ctx.fillRect(base[0] - 35, base[1] + 12, 70, 55);
+
+            ctx.strokeStyle = '#2563eb';
+            ctx.lineWidth = 13;
+            drawLine(...base, ...pose.elbow);
+
+            ctx.strokeStyle = '#16a34a';
+            ctx.lineWidth = 11;
+            drawLine(...pose.elbow, ...pose.hand);
+
+            drawBall();
+            drawClaw(pose.clawMatrix);
+
+            ctx.strokeStyle = '#1e293b';
+            ctx.lineWidth = 3;
+            drawCircle(...base, 9);
+            drawCircle(...pose.elbow, 8);
+        }
+
+        function grabOrRelease() {
+            if (holding) {
+                holding = false;
+                status.textContent = 'Released! The ball stays at the release point.';
+            } else {
+                const gripPoint = getArmPose().gripPoint;
+                const distance = Math.hypot(
+                    gripPoint[0] - ball[0],
+                    gripPoint[1] - ball[1]
+                );
+                if (distance <= ballRadius + 15) {
+                    holding = true;
+                    status.textContent = 'Grabbed! Move the arm; the ball follows the claw.';
+                } else {
+                    status.textContent = 'Too far away. Move the claw closer, then press Space.';
+                }
+            }
+            action();
+        }
+
+        function reset() {
+            shoulderAngle = -55 * Math.PI / 180;
+            elbowAngle = 70 * Math.PI / 180;
+            ball = [398, 231];
+            holding = false;
+            status.textContent = 'Reset. Press Space to grab the nearby ball.';
+            action();
+        }
+
+        function moveJoint(key) {
+            if (key === 'KeyA') shoulderAngle -= step;
+            if (key === 'KeyD') shoulderAngle += step;
+            if (key === 'KeyJ') elbowAngle -= step;
+            if (key === 'KeyL') elbowAngle += step;
+            action();
+        }
+
+        document.addEventListener('keydown', function(event) {
+            if (['KeyA', 'KeyD', 'KeyJ', 'KeyL', 'Space', 'KeyR'].includes(event.code)) {
+                event.preventDefault();
+            }
+            if (['KeyA', 'KeyD', 'KeyJ', 'KeyL'].includes(event.code)) {
+                moveJoint(event.code);
+            } else if (event.code === 'Space' && !event.repeat) {
+                grabOrRelease();
+            } else if (event.code === 'KeyR' && !event.repeat) {
+                reset();
+            }
+        });
+
+        canvas.addEventListener('click', function(event) {
+            const bounds = canvas.getBoundingClientRect();
+            ball = [
+                (event.clientX - bounds.left) * canvas.width / bounds.width,
+                (event.clientY - bounds.top) * canvas.height / bounds.height
+            ];
+            holding = false;
+            status.textContent = 'Ball moved. Position the claw near it and grab!';
+            action();
+        });
+
+        document.getElementById('shoulderLeft').addEventListener('click', () => moveJoint('KeyA'));
+        document.getElementById('shoulderRight').addEventListener('click', () => moveJoint('KeyD'));
+        document.getElementById('elbowLeft').addEventListener('click', () => moveJoint('KeyJ'));
+        document.getElementById('elbowRight').addEventListener('click', () => moveJoint('KeyL'));
+        document.getElementById('grab').addEventListener('click', grabOrRelease);
+        document.getElementById('reset').addEventListener('click', reset);
+
+        action();
+    </script>
+</body>
+</html>

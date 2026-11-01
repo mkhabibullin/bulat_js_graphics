@@ -1,0 +1,116 @@
+<html>
+    <head>
+        <title>Simple Line - Canvas</title>
+    </head>
+    <body>
+        <canvas id="canvas" width="800" height="800"></canvas>
+
+        <script>
+            const canvas = document.getElementById('canvas');
+            const ctx = canvas.getContext('2d');
+            const center = [canvas.width / 2, canvas.height / 2];
+
+            const angle = 15;
+            const radians = angle * Math.PI / 180;
+            const shiftX = 20;
+
+            const cos = Math.cos(radians);
+            const sin = Math.sin(radians);
+
+
+            let startPoint = [center[0], center[1] - 100];
+            let endPoint = [center[0] + 100, center[1] + 100];
+
+            const cx = center[0];
+            const cy = center[1];
+
+            const rotationMatrix = [
+                [cos, -sin, cx - cos * cx + sin * cy],
+                [sin,  cos, cy - sin * cx - cos * cy],
+                [0,      0,                   1]
+            ];
+
+
+            const shiftMatrix = [
+                [1, 0, shiftX],
+                [0, 1,  0],
+                [0, 0,  1]
+            ];
+
+            function multiplyMatrices(A, B) {
+                const result = [
+                    [0, 0, 0],
+                    [0, 0, 0],
+                    [0, 0, 0]
+                ];
+
+                for (let row = 0; row < 3; row++) {
+                    for (let col = 0; col < 3; col++) {
+                        for (let k = 0; k < 3; k++) {
+                            result[row][col] += A[row][k] * B[k][col];
+                        }
+                    }
+                }
+
+                return result;
+            }
+
+            // const combinedMatrix = multiplyMatrices(
+            //     shiftMatrix,
+            //     rotationMatrix
+            // );
+            const combinedMatrix = rotationMatrix;
+
+            canvas.addEventListener('click', function(event) {
+                action();
+            });
+
+            function action() {
+                clearCanvas();
+
+                startPoint = transformPoint(startPoint, combinedMatrix);
+                endPoint = transformPoint(endPoint, combinedMatrix);
+
+                drawLine(
+                    startPoint[0],
+                    startPoint[1],
+                    endPoint[0],
+                    endPoint[1]);
+            }
+
+            function clearCanvas() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+            }
+
+            function drawLine(x1, y1, x2, y2) {
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.lineTo(x2, y2);
+                ctx.stroke();
+            }
+
+            
+            function transformPoint(point, matrix) {
+                const [x, y] = point;
+
+                const newX = x * matrix[0][0] +
+                            y * matrix[0][1] +
+                                matrix[0][2];
+
+                const newY = x * matrix[1][0] +
+                            y * matrix[1][1] +
+                                matrix[1][2];
+
+                return [newX, newY];
+            }
+
+
+            clearCanvas();
+
+            drawLine(startPoint[0], startPoint[1], endPoint[0], endPoint[1]);
+
+            setInterval(action, 100);
+
+        </script>
+    </body>
+</html>

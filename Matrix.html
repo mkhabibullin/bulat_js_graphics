@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Поворот линии матрицей</title>
+</head>
+<body>
+
+<canvas id="canvas" width="600" height="400"
+        style="border:1px solid black"></canvas>
+
+<br>
+
+<label>
+  Угол:
+  <input id="angle" type="range" min="0" max="360" value="0">
+</label>
+
+<span id="angleValue">0°</span>
+
+<script>
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+const slider = document.getElementById("angle");
+const angleValue = document.getElementById("angleValue");
+
+
+// Исходная линия.
+// Точки задаём относительно центра координат.
+const A = [0, 0];
+const B = [150, 0];
+
+
+// Умножение матрицы 2x2 на вектор [x, y]
+function multiplyMatrixVector(matrix, point) {
+    const x = point[0];
+    const y = point[1];
+
+    return [
+        matrix[0][0] * x + matrix[0][1] * y,
+        matrix[1][0] * x + matrix[1][1] * y
+    ];
+}
+
+
+// Поворот точки
+function rotatePoint(point, angleDegrees) {
+
+    // JavaScript sin/cos работают с радианами
+    const angle = angleDegrees * Math.PI / 180;
+
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+
+    // Матрица вращения:
+    //
+    // [ cosθ  -sinθ ]
+    // [ sinθ   cosθ ]
+    //
+    const rotationMatrix = [
+        [cos, -sin],
+        [sin,  cos]
+    ];
+
+    return multiplyMatrixVector(rotationMatrix, point);
+}
+
+
+function draw() {
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const angle = Number(slider.value);
+    angleValue.textContent = angle + "°";
+
+    // Поворачиваем обе точки линии
+    const rotatedA = rotatePoint(A, angle);
+    const rotatedB = rotatePoint(B, angle);
+
+
+    // Центр canvas будет нашей точкой (0, 0)
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+
+
+    // Рисуем ось X
+    ctx.beginPath();
+    ctx.moveTo(0, centerY);
+    ctx.lineTo(canvas.width, centerY);
+    ctx.strokeStyle = "#cccccc";
+    ctx.stroke();
+
+
+    // Рисуем ось Y
+    ctx.beginPath();
+    ctx.moveTo(centerX, 0);
+    ctx.lineTo(centerX, canvas.height);
+    ctx.stroke();
+
+
+    // Рисуем нашу линию
+    ctx.beginPath();
+
+    ctx.moveTo(
+        centerX + rotatedA[0],
+        centerY - rotatedA[1]
+    );
+
+    ctx.lineTo(
+        centerX + rotatedB[0],
+        centerY - rotatedB[1]
+    );
+
+    ctx.strokeStyle = "blue";
+    ctx.lineWidth = 4;
+    ctx.stroke();
+}
+
+
+// Перерисовываем при движении ползунка
+slider.addEventListener("input", draw);
+
+draw();
+</script>
+
+</body>
+</html>

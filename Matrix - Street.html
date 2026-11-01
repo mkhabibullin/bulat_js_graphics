@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>3D улица</title>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+    }
+
+    canvas {
+      border: 1px solid black;
+      background: #dfefff;
+    }
+
+    button {
+      margin: 4px;
+      padding: 8px 14px;
+      font-size: 16px;
+    }
+  </style>
+</head>
+
+<body>
+
+<h2>Дорога к городу</h2>
+
+<canvas id="canvas" width="800" height="500"></canvas>
+
+<br>
+
+<button id="forward">Идти вперёд</button>
+<button id="back">Назад</button>
+
+<br>
+
+<button id="left">← Повернуться на 10°</button>
+<button id="right">Повернуться на 10° →</button>
+
+<p id="info"></p>
+
+<script>
+
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+
+// ==================================================
+// КАМЕРА / ИГРОК
+// ==================================================
+
+let cameraX = 0;
+let cameraZ = 0;
+
+// высота глаз игрока
+const cameraY = 1.7;
+
+// направление взгляда
+let cameraAngle = 0;
+
+
+// ==================================================
+// ПЕРСПЕКТИВА
+// ==================================================
+
+const focalLength = 400;
+
+
+// ==================================================
+// ГОРОД
+// ==================================================
+
+const buildings = [
+
+  // слева
+
+  {
+    x: -7,
+    z: 12,
+    width: 4,
+    height: 5,
+    depth: 5
+  },
+
+  {
+    x: -8,
+    z: 20,
+    width: 5,
+    height: 8,
+    depth: 6
+  },
+
+  {
+    x: -7,
+    z: 30,
+    width: 4,
+    height: 6,
+    depth: 5
+  },
+
+
+  // справа
+
+  {
+    x: 3,
+    z: 13,
+    width: 4,
+    height: 6,
+    depth: 5
+  },
+
+  {
+    x: 4,
+    z: 22,
+    width: 5,
+    height: 9,
+    depth: 6
+  },
+
+  {
+    x: 3,
+    z: 32,
+    width: 4,
+    height: 7,
+    depth: 5
+  }
+
+];
+
+
+// ==================================================
+// ПОВОРОТ ВОКРУГ Y
+// ==================================================
+//
+//        [ cosθ   0   -sinθ ]
+// R_y =  [  0     1      0  ]
+//        [ sinθ   0    cosθ ]
+//
+// ==================================================
+
+function rotateY(x, y, z, angle) {
+
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+
+  return {
+
+    x: x * cos - z * sin,
+
+    y: y,
+
+    z: x * sin + z * cos
+
+  };
+}
+
+
+// ==================================================
+// МИРОВЫЕ КООРДИНАТЫ → КООРДИНАТЫ КАМЕРЫ
+// ==================================================
+
+function worldToCamera(point) {
+
+  // 1. Вычитаем положение камеры
+
+  const x = point.x - cameraX;
+
+  const y = point.y - cameraY;
+
+  const z = point.z - cameraZ;
+
+
+  // 2. Поворачиваем весь мир
+  // в противоположную сторону от камеры
+
+  return rotateY(
+    x,
+    y,
+    z,
+    -cameraAngle
+  );
+}
+
+
+// ==================================================
+// 3D → 2D
+// ==================================================
+//
+// x_screen = f * x / z
+//
+// y_screen = f * y / z
+//
+// ==================================================
+
+function project(point) {
+
+  // точка находится позади игрока
+  if (point.z <= 0.1) {
+    return null;
+  }
+
+  return {
+
+    x:
+      canvas.width / 2
+      +
+      focalLength * point.x / point.z,
+
+    y:
+      canvas.height / 2
+      -
+      focalLength * point.y / point.z
+
+  };
+}
+
+
+// ==================================================
+// РИСОВАНИЕ 3D ЛИНИИ
+// ==================================================
+
+function draw3DLine(a, b, color = "black", width = 2) {
+
+  const cameraA = worldToCamera(a);
+  const cameraB = worldToCamera(b);
+
+  const screenA = project(cameraA);
+  const screenB = project(cameraB);
+
+  if (!screenA || !screenB) {
+    return;
+  }
+
+  ctx.beginPath();
+
+  ctx.moveTo(screenA.x, screenA.y);
+  ctx.lineTo(screenB.x, screenB.y);
+
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+
+  ctx.stroke();
+}
+
+
+// ==================================================
+// ДОРОГА
+// ==================================================
+
+function drawRoad() {
+
+  /*
+      Игрок:
+
+                Z
+                ↑
+
+             город
+
+
+        -2              +2
+         \              /
+          \            /
+           \          /
+            \        /
+             \      /
+              PLAYER
+               0,0
+
+  */
+
+
+  // Левая сторона дороги
+
+  draw3DLine(
+
+    {
+      x: -2,
+      y: 0,
+      z: 0.5
+    },
+
+    {
+      x: -2,
+      y: 0,
+      z: 100
+    },
+
+    "#444",
+    4
+  );
+
+
+  // Правая сторона дороги
+
+  draw3DLine(
+
+    {
+      x: 2,
+      y: 0,
+      z: 0.5
+    },
+
+    {
+      x: 2,
+      y: 0,
+      z: 100
+    },
+
+    "#444",
+    4
+  );
+
+
+  // Центральная линия дороги
+  // отдельные короткие отрезки
+
+  for (let z = 3; z < 100; z += 6) {
+
+    draw3DLine(
+
+      {
+        x: 0,
+        y: 0.01,
+        z: z
+      },
+
+      {
+        x: 0,
+        y: 0.01,
+        z: z + 3
+      },
+
+      "#ffffff",
+      3
+    );
+  }
+}
+
+
+// ==================================================
+// ВЕРШИНЫ ЗДАНИЯ
+// ==================================================
+
+function getBuildingVertices(building) {
+
+  const x1 = building.x;
+  const x2 = building.x + building.width;
+
+  const y1 = 0;
+  const y2 = building.height;
+
+  const z1 = building.z;
+  const z2 = building.z + building.depth;
+
+  return [
+
+    { x: x1, y: y1, z: z1 },
+    { x: x2, y: y1, z: z1 },
+    { x: x2, y: y2, z: z1 },
+    { x: x1, y: y2, z: z1 },
+
+    { x: x1, y: y1, z: z2 },
+    { x: x2, y: y1, z: z2 },
+    { x: x2, y: y2, z: z2 },
+    { x: x1, y: y2, z: z2 }
+
+  ];
+}
+
+
+// рёбра прямоугольного параллелепипеда
+
+const edges = [
+
+  [0,1],
+  [1,2],
+  [2,3],
+  [3,0],
+
+  [4,5],
+  [5,6],
+  [6,7],
+  [7,4],
+
+  [0,4],
+  [1,5],
+  [2,6],
+  [3,7]
+
+];
+
+
+function drawBuilding(building) {
+
+  const vertices =
+    getBuildingVertices(building);
+
+  for (const [a, b] of edges) {
+
+    draw3DLine(
+      vertices[a],
+      vertices[b],
+      "#222",
+      2
+    );
+  }
+}
+
+
+// ==================================================
+// СЦЕНА
+// ==================================================
+
+function drawScene() {
+
+  ctx.clearRect(
+    0,
+    0,
+    canvas.width,
+    canvas.height
+  );
+
+
+  // земля
+
+  ctx.fillStyle = "#8caf75";
+
+  ctx.fillRect(
+    0,
+    canvas.height / 2,
+    canvas.width,
+    canvas.height / 2
+  );
+
+
+  drawRoad();
+
+
+  for (const building of buildings) {
+
+    drawBuilding(building);
+
+  }
+
+
+  document.getElementById("info").textContent =
+
+    "Игрок: x = "
+    + cameraX.toFixed(1)
+
+    + ", z = "
+    + cameraZ.toFixed(1)
+
+    + ", угол = "
+    + (
+        cameraAngle
+        *
+        180
+        /
+        Math.PI
+      ).toFixed(0)
+
+    + "°";
+}
+
+
+// ==================================================
+// ДВИЖЕНИЕ
+// ==================================================
+
+function moveForward(distance) {
+
+  /*
+      Направление движения:
+
+      dx = sin(angle)
+
+      dz = cos(angle)
+  */
+
+  cameraX +=
+    Math.sin(cameraAngle)
+    *
+    distance;
+
+  cameraZ +=
+    Math.cos(cameraAngle)
+    *
+    distance;
+}
+
+
+// ==================================================
+// КНОПКИ
+// ==================================================
+
+document
+  .getElementById("forward")
+  .addEventListener(
+    "click",
+    () => {
+
+      moveForward(0.5);
+
+      drawScene();
+    }
+  );
+
+
+document
+  .getElementById("back")
+  .addEventListener(
+    "click",
+    () => {
+
+      moveForward(-0.5);
+
+      drawScene();
+    }
+  );
+
+
+document
+  .getElementById("left")
+  .addEventListener(
+    "click",
+    () => {
+
+      cameraAngle -=
+        10 * Math.PI / 180;
+
+      drawScene();
+    }
+  );
+
+
+document
+  .getElementById("right")
+  .addEventListener(
+    "click",
+    () => {
+
+      cameraAngle +=
+        10 * Math.PI / 180;
+
+      drawScene();
+    }
+  );
+
+
+drawScene();
+
+</script>
+
+</body>
+</html>

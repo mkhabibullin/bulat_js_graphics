@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>One Matrix, Whole Rocket</title>
+</head>
+<body>
+    <p>Click anywhere on the canvas to move the spinning rocket.</p>
+    <canvas id="canvas" width="600" height="400" style="border: 1px solid gray; max-width: 100%;"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let x = 300;
+        let y = 200;
+        let angle = 0;
+
+        // Every part uses local coordinates around (0, 0).
+        function drawRocket() {
+            // Flame
+            ctx.fillStyle = 'orange';
+            ctx.beginPath();
+            ctx.moveTo(-12, 45);
+            ctx.lineTo(0, 75);
+            ctx.lineTo(12, 45);
+            ctx.fill();
+
+            // Left and right fins
+            ctx.fillStyle = 'tomato';
+            ctx.beginPath();
+            ctx.moveTo(-18, 18);
+            ctx.lineTo(-34, 52);
+            ctx.lineTo(-18, 45);
+            ctx.moveTo(18, 18);
+            ctx.lineTo(34, 52);
+            ctx.lineTo(18, 45);
+            ctx.fill();
+
+            // Main body
+            ctx.fillStyle = 'lightblue';
+            ctx.fillRect(-18, -40, 36, 85);
+
+            // Nose
+            ctx.fillStyle = 'tomato';
+            ctx.beginPath();
+            ctx.moveTo(-18, -40);
+            ctx.lineTo(0, -72);
+            ctx.lineTo(18, -40);
+            ctx.fill();
+
+            // Two windows
+            ctx.fillStyle = 'navy';
+            for (const windowY of [-20, 12]) {
+                ctx.beginPath();
+                ctx.arc(0, windowY, 9, 0, 2 * Math.PI);
+                ctx.fill();
+            }
+        }
+
+        function draw() {
+            // Clear in ordinary screen coordinates.
+            ctx.resetTransform();
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // M = Translation * Rotation
+            const c = Math.cos(angle);
+            const s = Math.sin(angle);
+            const M = [
+                [c, -s, x],
+                [s,  c, y],
+                [0,  0, 1]
+            ];
+
+            // Use the same matrix for EVERY part of the rocket.
+            ctx.setTransform(
+                M[0][0], M[1][0],
+                M[0][1], M[1][1],
+                M[0][2], M[1][2]
+            );
+
+            drawRocket();
+        }
+
+        canvas.addEventListener('click', function (event) {
+            const rect = canvas.getBoundingClientRect();
+            x = (event.clientX - rect.left) * canvas.width / rect.width;
+            y = (event.clientY - rect.top) * canvas.height / rect.height;
+        });
+
+        setInterval(function () {
+            angle += 0.03;
+            draw();
+        }, 30);
+
+        draw();
+    </script>
+</body>
+</html>

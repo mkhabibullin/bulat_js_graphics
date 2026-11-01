@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8"/>
+        <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+        <title>Bouncing Lab | Real Physics, Tiny Game</title>
+        <style>
+            :root {
+                color-scheme: dark;
+                --bg: #0c1426;
+                --panel: #131f35;
+                --line: #30415d;
+                --text: #eff5ff;
+                --muted: #aabbd2;
+                --cyan: #59dce2;
+                --orange: #ffa768;
+                --green: #91f1b5;
+            }
+
+            * {
+                box-sizing: border-box;
+            }
+
+            body {
+                margin: 0;
+                background: radial-gradient(ellipse at 20% 0%,#193154,#0c1426 65%);
+                color: var(--text);
+                font: 15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif;
+                min-height: 100vh;
+            }
+
+            main {
+                max-width: 1160px;
+                margin: auto;
+                padding: 24px 18px 45px;
+            }
+
+            .eyebrow {
+                color: var(--cyan);
+                font-size: 11px;
+                letter-spacing: .18em;
+                text-transform: uppercase;
+                font-weight: 800;
+            }
+
+            h1 {
+                font-size: clamp(26px,4vw,41px);
+                margin: 4px 0 6px;
+                letter-spacing: -.035em;
+            }
+
+            p {
+                color: var(--muted);
+                margin: 0 0 14px;
+            }
+
+            .layout {
+                display: grid;
+                grid-template-columns: minmax(0,1.6fr) minmax(285px,1fr);
+                gap: 14px;
+                align-items: start;
+            }
+
+            .card {
+                border: 1px solid #31425f;
+                background: linear-gradient(150deg,#17263f,#101b30);
+                border-radius: 18px;
+                overflow: hidden;
+                box-shadow: 0 13px 30px #0003;
+            }
+
+            .scene-top {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                gap: 12px;
+                padding: 14px 18px;
+                border-bottom: 1px solid #31425f;
+            }
+
+            .scene-top b {
+                font-size: 14px;
+            }
+
+            .state {
+                font-size: 12px;
+                color: var(--green);
+                font-weight: 700;
+            }
+
+            canvas {
+                display: block;
+                width: 100%;
+                height: auto;
+            }
+
+            .scene-bottom {
+                padding: 12px 18px;
+                border-top: 1px solid #31425f;
+                color: var(--muted);
+                font-size: 12px;
+            }
+
+            .metrics {
+                display: grid;
+                grid-template-columns: repeat(3,1fr);
+                gap: 8px;
+                margin-top: 14px;
+            }
+
+            .metric {
+                padding: 12px;
+                background: #14233b;
+                border: 1px solid #2d3f59;
+                border-radius: 12px;
+            }
+
+            .metric small {
+                display: block;
+                color: var(--muted);
+                font-size: 11px;
+            }
+
+            .metric strong {
+                display: block;
+                font-size: 22px;
+                color: #fff;
+                font-variant-numeric: tabular-nums;
+            }
+
+            .controls {
+                padding: 20px;
+            }
+
+            .controls h2 {
+                font-size: 17px;
+                margin: 0 0 5px;
+            }
+
+            .small {
+                font-size: 12px;
+                color: var(--muted);
+            }
+
+            .setting {
+                margin-top: 21px;
+            }
+
+            .setting-head {
+                display: flex;
+                justify-content: space-between;
+                gap: 6px;
+                align-items: center;
+                margin-bottom: 9px;
+                font-size: 13px;
+            }
+
+            .setting-head output {
+                font-weight: 800;
+                color: var(--cyan);
+                font-variant-numeric: tabular-nums;
+            }
+
+            input[type=range] {
+                width: 100%;
+                accent-color: #5fd3e1;
+                cursor: pointer;
+            }
+
+            .range-ends {
+                display: flex;
+                justify-content: space-between;
+                font-size: 10px;
+                color: #8499b5;
+            }
+
+            .presets {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 7px;
+                margin: 14px 0 6px;
+            }
+
+            button {
+                font: inherit;
+                cursor: pointer;
+                border: 1px solid #4b6380;
+                color: #ecf6ff;
+                background: #223653;
+                border-radius: 10px;
+                padding: 9px 12px;
+                font-weight: 650;
+            }
+
+            button:hover {
+                border-color: #7bcad7;
+            }
+
+            button.primary {
+                background: #65dce0;
+                border-color: #65dce0;
+                color: #10223a;
+            }
+
+            button:focus-visible {
+                outline: 3px solid #fff;
+                outline-offset: 2px;
+            }
+
+            .actions {
+                display: grid;
+                grid-template-columns: 1.4fr 1fr 1fr;
+                gap: 8px;
+                margin-top: 22px;
+            }
+
+            .actions button {
+                font-size: 13px;
+                padding: 10px 4px;
+            }
+
+            .result {
+                border-top: 1px solid #344662;
+                margin-top: 22px;
+                padding-top: 18px;
+            }
+
+            .result strong {
+                color: var(--orange);
+            }
+
+            .bar {
+                height: 9px;
+                border-radius: 9px;
+                background: #283852;
+                margin: 9px 0;
+                overflow: hidden;
+            }
+
+            .bar>div {
+                background: linear-gradient(90deg,#e8a067,#ffe3a1);
+                height: 100%;
+                width: 0%;
+                transition: width .2s;
+            }
+
+            .lesson {
+                margin-top: 16px;
+                padding: 19px 21px;
+            }
+
+            .lesson h2 {
+                margin: 0 0 10px;
+                font-size: 19px;
+            }
+
+            .math {
+                font: 600 18px/1.7 ui-monospace,SFMono-Regular,Consolas,monospace;
+                color: #c3f5ee;
+                margin: 9px 0;
+            }
+
+            .lesson a {
+                color: #8bddf7;
+            }
+
+            .note {
+                margin-top: 12px;
+                padding: 10px 12px;
+                border-left: 3px solid var(--orange);
+                background: #172a42;
+                border-radius: 6px;
+                color: #d8e4f4;
+                font-size: 13px;
+            }
+
+            @media (max-width:820px) {
+                .layout {
+                    grid-template-columns: 1fr;
+                }
+                .metrics {
+                    margin-bottom: 14px;
+                }
+            }
+
+            @media (max-width:470px) {
+                .metrics {
+                    grid-template-columns: repeat(3,minmax(0,1fr));
+                }
+                .metric {
+                    padding: 9px;
+                }
+                .metric strong {
+                    font-size: 18px;
+                }
+                .controls {
+                    padding: 15px;
+                }
+                main {
+                    padding: 14px 10px 26px;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <main>
+            <div class="eyebrow">JavaScript &middot; Canvas &middot; Real physics</div>
+            <h1>Bouncing Lab <span aria-hidden="true">🏀</span></h1>
+            <p>Change the material, gravity, and drop height. Predict the first bounce, then test it!</p>
+            <div class="layout">
+                <div>
+                    <section aria-label="Bouncing ball simulation" class="card">
+                        <div class="scene-top"><b>Experiment chamber</b><span aria-live="polite" class="state" id="status">READY TO DROP</span></div>
+                        <canvas aria-label="Ball above a floor with a line marking its predicted first-bounce height" height="505" id="scene" width="940"></canvas>
+                        <div class="scene-bottom">The thin dashed line marks the <strong>predicted height of the first bounce</strong>. All heights are measured above the floor.</div>
+                    </section>
+                    <div class="metrics">
+                        <div class="metric"><small>Current height</small><strong id="currentHeight">3.00 m</strong></div>
+                        <div class="metric"><small>Vertical speed</small><strong id="currentSpeed">0.00 m/s</strong></div>
+                        <div class="metric"><small>Impacts</small><strong id="bounces">0</strong></div>
+                    </div>
+                </div>
+                <section class="card controls">
+                    <h2>Experiment controls</h2>
+                    <div class="small">Start with a preset or make your own material.</div>
+                    <div class="presets">
+                        <button data-e="0.85" type="button">🏀 Bouncy</button>
+                        <button data-e="0.65" type="button">🎾 Medium</button>
+                        <button data-e="0.10" type="button">🟠 Clay</button>
+                        <button data-e="0.97" type="button">✨ Superball</button>
+                    </div>
+                    <div class="setting">
+                        <div class="setting-head"><label for="elasticity">Bounciness &mdash; restitution (e)</label><output id="eValue">0.85</output></div>
+                        <input id="elasticity" max="1" min="0" step="0.01" type="range" value="0.85"/>
+                        <div class="range-ends"><span>0 &middot; no rebound</span><span>1 &middot; perfect rebound</span></div>
+                    </div>
+                    <div class="setting">
+                        <div class="setting-head"><label for="height">Drop height</label><output id="heightValue">3.0 m</output></div>
+                        <input id="height" max="4" min="0.5" step="0.1" type="range" value="3"/>
+                        <div class="range-ends"><span>0.5 m</span><span>4.0 m</span></div>
+                    </div>
+                    <div class="setting">
+                        <div class="setting-head"><label for="gravity">Gravity (g)</label><output id="gravityValue">9.81 m/s&sup2;</output></div>
+                        <input id="gravity" max="20" min="1.6" step="0.01" type="range" value="9.81"/>
+                        <div class="range-ends"><span>1.6 &middot; Moon-ish</span><span>20 &middot; stronger gravity</span></div>
+                    </div>
+                    <div class="actions">
+                        <button class="primary" id="drop" type="button">▶ Drop</button>
+                        <button id="pause" type="button">Pause</button>
+                        <button id="reset" type="button">Reset</button>
+                    </div>
+                    <div class="result">
+                        <div class="small">Predicted first rebound height</div>
+                        <div><strong id="predict" style="font-size:29px">2.17 m</strong> <span class="small" id="predictionRatio">72.3% of original height</span></div>
+                        <div class="bar">
+                            <div id="energyBar"></div>
+                        </div>
+                        <div class="small">Kinetic energy retained immediately after impact: <b id="energyPct">72.3%</b></div>
+                    </div>
+                </section>
+            </div>
+            <section class="card lesson">
+                <h2>Physics behind the game</h2>
+                <div class="math">v<sub>after</sub> = &minus;e &times; v<sub>before</sub></div>
+                <p>The minus sign reverses direction. The <b>coefficient of restitution</b> e determines how much of the impact speed the ball keeps after bouncing.</p>
+                <div class="math">h<sub>bounce</sub> = e&sup2; &times; h<sub>drop</sub></div>
+                <p>For example, e = 0.5 means the ball rebounds to only <b>25%</b> of its previous height (in this simplified model). Gravity follows <b>a = &minus;g</b> in our upward-positive height coordinates.</p>
+                <div class="note">Try this challenge: Choose e = 0.5 and a drop height of 4 m. Predict the first rebound height before pressing Drop. Then change gravity. Does the rebound height change, or only how quickly the ball moves?</div>
+                <p style="margin:13px 0 0;font-size:13px">Sources: <a href="https://en.wikipedia.org/wiki/Coefficient_of_restitution" rel="noopener" target="_blank">Coefficient of restitution (Wikipedia)</a> &middot; <a href="https://openstax.org/books/college-physics/pages/8-5-inelastic-collisions-in-one-dimension" rel="noopener" target="_blank">Bouncing-ball experiment (OpenStax)</a>.</p>
+                <p style="margin:6px 0 0;font-size:12px">Model assumptions: rigid, stationary floor; point-like vertical motion of the ball's center; no air resistance or spin; constant restitution. The ball illustration is larger than a point, but its height is measured from the floor to the bottom of the ball.</p>
+            </section>
+        </main>
+        <script>
+            'use strict';
+            const canvas = document.getElementById('scene');
+            const ctx = canvas.getContext('2d');
+            const $ = id => document.getElementById(id);
+            const groundY = 443, ballRadius = 31, ppm = 90, ballX = 485;
+            // ============================================================
+            // PHYSICS UNITS AND SIGNS
+            // h = height above the floor (meters; positive upward)
+            // v = vertical velocity (meters/second; positive upward)
+            // g = gravitational acceleration magnitude (meters/second²)
+            // e = coefficient of restitution (0 = no bounce, 1 = elastic)
+            // ============================================================
+            let g = 9.81, e = 0.85, dropHeight = 3;
+            let h = dropHeight, v = 0, impacts = 0, elapsed = 0;
+            let running = false, paused = false, lastTime = null, flash = 0;
+            let trail = [];
+
+            // ============================================================
+            // MATRIX FORMULA: 2D translation in homogeneous coordinates
+            //     [x']   [1  0  tx] [x]
+            //     [y'] = [0  1  ty] [y]
+            //     [1 ]   [0  0   1] [1]
+            // Moves a local drawing point to its Canvas position.
+            // ============================================================
+            function translationMatrix(x, y) {
+                return [
+                    [1, 0, x],
+                    [0, 1, y],
+                    [0, 0, 1]
+                ];
+            }
+
+            // MATRIX MULTIPLICATION: x' = m00*x + m01*y + m02
+            //                        y' = m10*x + m11*y + m12
+            function transformPoint(point, M) {
+                return [
+                    M[0][0] * point[0] + M[0][1] * point[1] + M[0][2],
+                    M[1][0] * point[0] + M[1][1] * point[1] + M[1][2]
+                ];
+            }
+
+            function readSettings() {
+                e = Number($('elasticity').value);
+                g = Number($('gravity').value);
+                dropHeight = Number($('height').value);
+                $('eValue').textContent = e.toFixed(2);
+                $('heightValue').textContent = dropHeight.toFixed(1) + ' m';
+                $('gravityValue').textContent = g.toFixed(2) + ' m/s²';
+                // ============================================================
+                // PHYSICS FORMULA: first rebound height
+                //     h_bounce = e² * h_drop
+                // For this idealized bounce, the fraction of kinetic energy
+                // retained immediately after impact is also e².
+                // ============================================================
+                const share = e * e * 100;
+                $('predict').textContent = (e * e * dropHeight).toFixed(2) + ' m';
+                $('predictionRatio').textContent = share.toFixed(1) + '% of original height';
+                $('energyBar').style.width = share.toFixed(2) + '%';
+                $('energyPct').textContent = share.toFixed(1) + '%';
+            }
+
+            function reset() {
+                running = false;
+                paused = false;
+                lastTime = null;
+                h = dropHeight;
+                v = 0;
+                impacts = 0;
+                elapsed = 0;
+                flash = 0;
+                trail = [];
+                $('pause').textContent = 'Pause';
+                $('drop').textContent = '▶ Drop';
+                $('status').textContent = 'READY TO DROP';
+                updateStats();
+                draw();
+            }
+
+            function launch() {
+                if (running) {
+                    reset();
+                }
+                running = true;
+                paused = false;
+                lastTime = null;
+                $('drop').textContent = '↻ Drop again';
+                $('pause').textContent = 'Pause';
+                $('status').textContent = 'IN MOTION';
+            }
+
+            function updateStats() {
+                $('currentHeight').textContent = h.toFixed(2) + ' m';
+                $('currentSpeed').textContent = Math.abs(v).toFixed(2) + ' m/s';
+                $('bounces').textContent = impacts.toString();
+            }
+
+            for (const id of ['elasticity', 'gravity', 'height']) {
+                $(id).addEventListener('input', () => {
+                    readSettings();
+                    reset();
+                });
+            }
+
+            document.querySelectorAll('[data-e]').forEach(btn => btn.addEventListener('click', () => {
+                $('elasticity').value = btn.dataset.e;
+                readSettings();
+                reset();
+            }));
+
+            $('drop').addEventListener('click', launch);
+            $('reset').addEventListener('click', reset);
+            $('pause').addEventListener('click', () => {
+                if (!running) return;
+                paused = !paused;
+                lastTime = null;
+                $('pause').textContent = paused ? 'Resume' : 'Pause';
+                $('status').textContent = paused ? 'PAUSED' : 'IN MOTION';
+            });
+
+            // ============================================================
+            // PHYSICS ENGINE: motion under constant downward gravity
+            //     a = -g
+            //     h(t + dt) = h(t) + v(t)*dt - (1/2)*g*dt²
+            //     v(t + dt) = v(t) - g*dt
+            // The floor is h = 0. The simulation calculates the exact impact
+            // time within a frame before applying the bounce formula.
+            // ============================================================
+            function simulate(dt) {
+                let remaining = dt;
+                let safety = 0;
+                while (remaining > 1e-8 && safety++ < 16) {
+                    // FORMULA 1: new height = old height + v*dt - ½*g*dt²
+                    let newH = h + v * remaining - 0.5 * g * remaining * remaining;
+                    if (newH >= 0) {
+                        h = newH;
+
+                        // FORMULA 2: v_new = v_old - g*dt
+                        v -= g * remaining;
+                        break;
+                    }
+                    // ========================================================
+                    // PHYSICS FORMULA 3: time when the ball reaches the floor
+                    // Solve: 0 = h + v*t - ½*g*t²
+                    // Positive root: t_hit = (v + sqrt(v² + 2*g*h)) / g
+                    // ========================================================
+                    const hitTime = (v + Math.sqrt(v * v + 2 * g * h)) / g;
+                    const used = Math.max(0, Math.min(remaining, hitTime));
+
+                    // Speed immediately BEFORE the impact: v = v_old - g*t_hit
+                    v -= g * used;
+                    h = 0;
+                    remaining -= used;
+                    impacts++;
+                    flash = 1;
+
+                    // ========================================================
+                    // PHYSICS FORMULA 4: bounce (coefficient of restitution)
+                    //     v_after = -e * v_before
+                    // Minus sign reverses direction: falling -> rising.
+                    // ========================================================
+                    v = -e * v;
+                    if (v < 0.17) {
+                        v = 0;
+                        running = false;
+                        $('status').textContent = 'SETTLED';
+                        break;
+                    }
+                    if (used < 1e-8) {
+                        remaining = 0;
+                        break;
+                    }
+                }
+                elapsed += dt;
+                flash = Math.max(0, flash - dt * 3.7);
+            }
+
+            function draw() {
+                const W = canvas.width, H = canvas.height;
+                ctx.clearRect(0, 0, W, H);
+
+                const bg = ctx.createLinearGradient(0, 0, 0, H);
+                bg.addColorStop(0, '#101f37');
+                bg.addColorStop(1, '#1e314b');
+                ctx.fillStyle = bg;
+                ctx.fillRect(0, 0, W, H);
+                ctx.strokeStyle = 'rgba(155,190,230,.11)';
+                ctx.lineWidth = 1;
+                for (let meter = 0; meter <= 4; meter++) {
+                    // COORDINATE CONVERSION: y_pixels = floorY - height_m*ppm
+                    // Canvas Y points down, but physics height points up.
+                    const y = groundY - meter * ppm;
+                    ctx.beginPath();
+                    ctx.moveTo(72, y);
+                    ctx.lineTo(W - 30, y);
+                    ctx.stroke();
+                    ctx.fillStyle = '#8fa8c9';
+                    ctx.font = '16px system-ui';
+                    ctx.fillText(meter + ' m', 23, y + 5);
+                }
+                ctx.fillStyle = '#1f4d54';
+                ctx.fillRect(0, groundY, W, H - groundY);
+                ctx.strokeStyle = '#64dfcf';
+                ctx.lineWidth = 4;
+                ctx.beginPath();
+                ctx.moveTo(0, groundY);
+                ctx.lineTo(W, groundY);
+                ctx.stroke();
+
+                // PHYSICS FORMULA: predicted first rebound h = e² * h_drop
+                // DRAWING CONVERSION: translate that height into Canvas pixels.
+                const pred = e * e * dropHeight;
+                const pY = groundY - pred * ppm;
+                ctx.save();
+                ctx.setLineDash([9, 8]);
+                ctx.strokeStyle = '#ffb572';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(610, pY);
+                ctx.lineTo(W - 45, pY);
+                ctx.stroke();
+                ctx.restore();
+                ctx.fillStyle = '#ffd2aa';
+                ctx.font = 'bold 17px system-ui';
+                ctx.fillText('Expected first bounce', 614, Math.max(25, pY - 11));
+
+                const initialY = groundY - dropHeight * ppm;
+                ctx.save();
+                ctx.setLineDash([4, 6]);
+                ctx.strokeStyle = 'rgba(186,211,242,.7)';
+                ctx.beginPath();
+                ctx.moveTo(100, initialY);
+                ctx.lineTo(375, initialY);
+                ctx.stroke();
+                ctx.restore();
+                ctx.fillStyle = '#c8d8ee';
+                ctx.font = '16px system-ui';
+                ctx.fillText('Drop height', 105, initialY - 11);
+
+                // COORDINATE CONVERSION: position the ball's CENTER above floor.
+                // ballY = groundY - radius_px - height_m*px_per_meter
+                const ballY = groundY - ballRadius - h * ppm;
+                const shadowScale = Math.max(.18, 1 - h / 5);
+                ctx.save();
+                ctx.globalAlpha = .1 + .2 * shadowScale;
+                ctx.fillStyle = '#000';
+                ctx.beginPath();
+                ctx.ellipse(ballX, groundY + 7, ballRadius * (2.6 - h * .24), 8 * shadowScale, 0, 0, 2 * Math.PI);
+                ctx.fill();
+                ctx.restore();
+
+                // MATRIX TRANSFORM: put the ball's local origin at (ballX, ballY).
+                const position = transformPoint([0, 0], translationMatrix(ballX, ballY));
+                ctx.save();
+                ctx.translate(position[0], position[1]);
+                const grd = ctx.createRadialGradient(-10, -14, 3, 0, 0, ballRadius);
+                grd.addColorStop(0, '#ffdf93');
+                grd.addColorStop(.55, '#f59b51');
+                grd.addColorStop(1, '#ba4e38');
+                ctx.fillStyle = grd;
+                ctx.strokeStyle = '#ffc489';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(0, 0, ballRadius, 0, 2 * Math.PI);
+                ctx.fill();
+                ctx.stroke();
+                ctx.strokeStyle = '#7a3d2e';
+                ctx.lineWidth = 2.7;
+                ctx.beginPath();
+                ctx.arc(0, 0, ballRadius * .63, -1.2, 1.9);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(-ballRadius * .85, 0);
+                ctx.quadraticCurveTo(0, -8, ballRadius * .85, 0);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(0, -ballRadius * .93);
+                ctx.quadraticCurveTo(14, 0, 0, ballRadius * .93);
+                ctx.stroke();
+                ctx.restore();
+
+                if (flash > 0) {
+                    ctx.strokeStyle = `rgba(255,202,127,${flash * .7})`;
+                    ctx.lineWidth = 3;
+                    ctx.beginPath();
+                    ctx.ellipse(ballX, groundY, ballRadius + 27 * (1 - flash), 4, 0, Math.PI, 2 * Math.PI);
+                    ctx.stroke();
+                }
+                ctx.fillStyle = '#d6e7fb';
+                ctx.font = '16px system-ui';
+                ctx.fillText('g = ' + g.toFixed(2) + ' m/s²', W - 182, 35);
+                ctx.fillStyle = '#80a7c4';
+                ctx.font = '13px system-ui';
+                ctx.fillText('No air resistance · constant bounciness', W - 340, H - 19);
+            }
+
+            function frame(now) {
+                if (lastTime === null) lastTime = now;
+                // TIME CONVERSION: requestAnimationFrame gives milliseconds.
+                // Divide by 1000 for seconds (the units our formulas use).
+                const dt = Math.min((now - lastTime) / 1000, .045);
+                lastTime = now;
+                if (running && !paused) {
+                    simulate(dt);
+                    updateStats();
+                }
+                draw();
+                requestAnimationFrame(frame);
+            }
+
+            readSettings(); reset(); requestAnimationFrame(frame);
+        </script>
+    </body>
+</html>

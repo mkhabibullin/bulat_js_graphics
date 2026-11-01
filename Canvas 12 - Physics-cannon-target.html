@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Physics Lab — Projectile Target Game</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, -apple-system, Segoe UI, sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #0b1220; color: #e9f2ff; }
+    main { width: min(100% - 28px, 1010px); margin: 26px auto 50px; }
+    .eyebrow { font-size: .72rem; font-weight: 800; letter-spacing: .18em; color: #76e0c4; text-transform: uppercase; }
+    h1 { margin: 7px 0 6px; font-size: clamp(1.6rem, 3.5vw, 2.5rem); line-height: 1.12; }
+    .subtitle { margin: 0 0 18px; color: #a9bbd5; max-width: 770px; line-height: 1.5; }
+    .stage { background: #101e33; border: 1px solid #2c405d; border-radius: 17px; overflow: hidden; box-shadow: 0 18px 55px #0004; }
+    canvas { display:block; width:100%; height:auto; cursor: crosshair; touch-action: pan-y; }
+    .stage-foot { border-top:1px solid #2c405d; padding: 11px 18px; display:flex; flex-wrap:wrap; justify-content:space-between; gap:12px; background:#111d30; font-size:.83rem; color:#aec1dd; }
+    .legend { display:flex; align-items:center; gap:8px; }
+    .swatch { display:inline-block; width:17px; height:0; border-top:3px dashed #61dec5; }
+    .panels { display:grid; grid-template-columns:1.2fr .8fr; gap:14px; margin-top:14px; }
+    .panel { border-radius: 15px; background:#141f31; border:1px solid #293a51; padding:20px; }
+    h2 { font-size: 1.03rem; margin:0 0 14px; }
+    .control { margin: 12px 0 22px; }
+    .control label { display:flex; justify-content:space-between; align-items:baseline; font-weight:650; gap:12px; margin-bottom:11px; }
+    output { color:#71e3c8; font-variant-numeric:tabular-nums; }
+    input[type="range"] { display:block; width:100%; accent-color:#6adac1; cursor:pointer; }
+    .range-ends { display:flex; justify-content:space-between; font-size:.75rem; color:#93a5be; margin-top:4px; }
+    button { background:#6de1c7; border:0; color:#081a25; font-weight:800; padding:12px 17px; border-radius:9px; cursor:pointer; font:inherit; font-weight:800; }
+    button.secondary { background:#263751; border:1px solid #405879; color:#e5efff; }
+    button:focus-visible { outline:3px solid #fff; outline-offset:3px; }
+    .actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+    .toggle { display:flex; align-items:center; gap:9px; color:#c0cfe3; font-size:.86rem; margin-top:15px; cursor:pointer; }
+    .toggle input { accent-color:#6de1c7; }
+    .stats { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .stat { background:#0d1829; border:1px solid #26364f; border-radius:9px; padding:11px; }
+    .stat span { display:block; color:#90a9c7; font-size:.72rem; margin-bottom:6px; }
+    .stat strong { font-size:1.2rem; font-variant-numeric:tabular-nums; }
+    #message { min-height:54px; margin-top:15px; background:#0d1829; border-left:4px solid #6de1c7; padding:11px 13px; border-radius:7px; font-weight:650; line-height:1.4; }
+    .lesson { border-radius:15px; margin-top:14px; padding:19px 21px; background:#141f31; border:1px solid #293a51; }
+    .lesson p { color:#c0d1e6; margin:9px 0; line-height:1.6; }
+    code { color:#93ebd5; }
+    .formula { padding:11px; background:#0c1828; border-radius:8px; margin-top:10px; overflow-x:auto; font-family:ui-monospace, SFMono-Regular, Consolas, monospace; font-size:.89rem; color:#e7f1fe; }
+    a { color:#86e7d4; }
+    @media(max-width:720px) { .panels {grid-template-columns:1fr;} .panel {padding:16px;} .stage-foot {font-size:.75rem;} }
+  </style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">JavaScript Physics Lab · Experiment 01</div>
+  <h1>Can you land the ball on the target?</h1>
+  <p class="subtitle">Change the angle and launch speed. Predict where gravity will take the ball, then test your guess. This game uses the real equations of projectile motion.</p>
+
+  <div class="stage">
+    <canvas id="canvas" width="900" height="440" aria-label="Cannonball physics game. A ball is launched along a parabolic path toward a ground target."></canvas>
+    <div class="stage-foot">
+      <span class="legend"><i class="swatch"></i> Dashed curve = predicted trajectory</span>
+      <span>Tip: click the ground to move the target</span>
+    </div>
+  </div>
+
+  <div class="panels">
+    <section class="panel" aria-label="Launch controls">
+      <h2>Experiment controls</h2>
+      <div class="control">
+        <label for="angle">Launch angle <output id="angleValue">45°</output></label>
+        <input id="angle" type="range" min="15" max="75" step="1" value="45">
+        <div class="range-ends"><span>15° low</span><span>75° high</span></div>
+      </div>
+      <div class="control">
+        <label for="speed">Launch speed <output id="speedValue">13 m/s</output></label>
+        <input id="speed" type="range" min="8" max="20" step="0.5" value="13">
+        <div class="range-ends"><span>8 m/s</span><span>20 m/s</span></div>
+      </div>
+      <div class="actions">
+        <button id="launch">Launch ball ↗</button>
+        <button id="reset" class="secondary">Reset</button>
+        <button id="newTarget" class="secondary">New target</button>
+      </div>
+      <label class="toggle"><input id="showPrediction" type="checkbox" checked> Show the mathematical prediction</label>
+    </section>
+    <section class="panel" aria-label="Live measurements">
+      <h2>Physics measurements</h2>
+      <div class="stats">
+        <div class="stat"><span>Predicted landing</span><strong id="predicted">17.2 m</strong></div>
+        <div class="stat"><span>Maximum height</span><strong id="maxHeight">4.3 m</strong></div>
+        <div class="stat"><span>Flight time</span><strong id="flightTime">1.87 s</strong></div>
+        <div class="stat"><span>Current height</span><strong id="height">0.0 m</strong></div>
+      </div>
+      <div id="message" aria-live="polite">Set your angle and speed, then press Launch.</div>
+      <p style="color:#9fb2ce;font-size:.82rem;margin-top:13px;line-height:1.5">Score: <strong id="score">0</strong> hits in <strong id="shots">0</strong> launches · Gravity: 9.81 m/s² (Earth)</p>
+    </section>
+  </div>
+
+  <section class="lesson">
+    <h2>The science inside the game</h2>
+    <p><strong>Horizontal motion:</strong> The ball keeps moving forward at a steady horizontal speed. <strong>Vertical motion:</strong> Gravity continuously pulls it downward.</p>
+    <div class="formula">x(t) = v × cos(angle) × t</div>
+    <div class="formula">height(t) = v × sin(angle) × t − ½ × g × t²</div>
+    <p><strong>Real-world assumption:</strong> These equations assume a flat surface, uniform gravity, and <em>no air resistance</em>. They are an idealized but genuine physics model, not an invented animation path.</p>
+    <p>Read more: <a href="https://en.wikipedia.org/wiki/Projectile_motion" target="_blank" rel="noopener noreferrer">Projectile motion — Wikipedia</a>. Challenge: can you hit the same target using two different angles?</p>
+  </section>
+</main>
+
+<script>
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+
+  const GRAVITY = 9.81;       // meters / second² (Earth)
+  const PIXELS_PER_METER = 19;
+  const ORIGIN_X = 82;
+  const ROAD_Y = 365;
+  const BALL_RADIUS = 9;
+  const TARGET_HALF_WIDTH = 0.85; // meters
+
+  let angleDegrees = 45;
+  let launchSpeed = 13;       // meters / second
+  let targetMeters = 17.25;
+  let phase = 'ready';        // ready, flying, landed
+  let launchTime = 0;
+  let currentTime = 0;
+  let shots = 0;
+  let hits = 0;
+  let landingX = null;
+
+  const $ = id => document.getElementById(id);
+
+  function radians(degrees) {
+    return degrees * Math.PI / 180;
+  }
+
+  function flightTime() {
+    return 2 * launchSpeed * Math.sin(radians(angleDegrees)) / GRAVITY;
+  }
+
+  function positionAt(t) {
+    const angle = radians(angleDegrees);
+    return {
+      x: launchSpeed * Math.cos(angle) * t,
+      height: launchSpeed * Math.sin(angle) * t - 0.5 * GRAVITY * t * t
+    };
+  }
+
+  function toCanvas(point) {
+    return {
+      x: ORIGIN_X + point.x * PIXELS_PER_METER,
+      y: ROAD_Y - BALL_RADIUS - point.height * PIXELS_PER_METER
+    };
+  }
+
+  function clearCanvas() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
+
+  function drawLine(x1, y1, x2, y2) {
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+  }
+
+  function drawCircle(x, y, radius) {
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function drawBackground() {
+    const sky = ctx.createLinearGradient(0, 0, 0, ROAD_Y);
+    sky.addColorStop(0, '#102442');
+    sky.addColorStop(1, '#234761');
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.strokeStyle = 'rgba(205, 231, 255, 0.10)';
+    ctx.lineWidth = 1;
+    for (let y = ROAD_Y - 5 * PIXELS_PER_METER; y > 20; y -= 5 * PIXELS_PER_METER) {
+      drawLine(0, y, canvas.width, y);
+    }
+    for (let x = ORIGIN_X; x < canvas.width; x += 5 * PIXELS_PER_METER) {
+      drawLine(x, 18, x, ROAD_Y);
+    }
+
+    ctx.fillStyle = '#182f33';
+    ctx.fillRect(0, ROAD_Y, canvas.width, canvas.height - ROAD_Y);
+    ctx.strokeStyle = '#a5d2b3';
+    ctx.lineWidth = 3;
+    drawLine(0, ROAD_Y, canvas.width, ROAD_Y);
+
+    ctx.fillStyle = '#a7bfcb';
+    ctx.font = '13px system-ui';
+    for (let meters = 0; meters <= 40; meters += 5) {
+      const x = ORIGIN_X + meters * PIXELS_PER_METER;
+      ctx.fillText(meters + ' m', x - 10, ROAD_Y + 25);
+    }
+  }
+
+  function drawTarget() {
+    const x = ORIGIN_X + targetMeters * PIXELS_PER_METER;
+    const half = TARGET_HALF_WIDTH * PIXELS_PER_METER;
+    ctx.fillStyle = 'rgba(248, 197, 81, 0.17)';
+    ctx.fillRect(x - half, ROAD_Y - 5, 2 * half, 20);
+    ctx.fillStyle = '#ffd56c';
+    ctx.fillRect(x - half, ROAD_Y - 6, 2 * half, 6);
+    ctx.strokeStyle = '#ffd56c';
+    ctx.lineWidth = 2;
+    drawLine(x, ROAD_Y - 12, x, ROAD_Y - 71);
+    ctx.fillStyle = '#ff9767';
+    ctx.beginPath();
+    ctx.moveTo(x, ROAD_Y - 71);
+    ctx.lineTo(x + 37, ROAD_Y - 62);
+    ctx.lineTo(x, ROAD_Y - 52);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#ffe7a3';
+    ctx.font = 'bold 13px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('TARGET', x, ROAD_Y - 85);
+    ctx.textAlign = 'left';
+  }
+
+  function drawPrediction() {
+    if (!$('showPrediction').checked) return;
+    ctx.save();
+    ctx.strokeStyle = '#66e2c9';
+    ctx.lineWidth = 2.5;
+    ctx.setLineDash([6, 9]);
+    ctx.beginPath();
+    const total = flightTime();
+    for (let i = 0; i <= 100; i++) {
+      const pos = toCanvas(positionAt(total * i / 100));
+      if (i === 0) ctx.moveTo(pos.x, pos.y);
+      else ctx.lineTo(pos.x, pos.y);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawLauncher() {
+    const angle = radians(angleDegrees);
+    const x = ORIGIN_X;
+    const y = ROAD_Y - BALL_RADIUS;
+    ctx.save();
+    ctx.strokeStyle = '#091725';
+    ctx.lineWidth = 17;
+    ctx.lineCap = 'round';
+    drawLine(x - 31 * Math.cos(angle), y + 31 * Math.sin(angle), x, y);
+    ctx.strokeStyle = '#7596bd';
+    ctx.lineWidth = 10;
+    drawLine(x - 31 * Math.cos(angle), y + 31 * Math.sin(angle), x, y);
+    ctx.fillStyle = '#142940';
+    drawCircle(x - 27, ROAD_Y - 12, 16);
+    ctx.fillStyle = '#7aacc2';
+    drawCircle(x - 27, ROAD_Y - 12, 6);
+    ctx.restore();
+  }
+
+  function drawBall(pos) {
+    const p = toCanvas(pos);
+    const shine = ctx.createRadialGradient(p.x - 3, p.y - 4, 1, p.x, p.y, BALL_RADIUS + 2);
+    shine.addColorStop(0, '#fff5c6');
+    shine.addColorStop(0.25, '#ffc878');
+    shine.addColorStop(1, '#e17a43');
+    ctx.fillStyle = shine;
+    drawCircle(p.x, p.y, BALL_RADIUS);
+    ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, BALL_RADIUS, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  function render() {
+    clearCanvas();
+    drawBackground();
+    drawPrediction();
+    drawTarget();
+    drawLauncher();
+    const t = phase === 'ready' ? 0 : currentTime;
+    const pos = positionAt(t);
+    drawBall({x: pos.x, height: Math.max(0, pos.height)});
+    $('height').textContent = Math.max(0, pos.height).toFixed(1) + ' m';
+  }
+
+  function updateStats() {
+    const time = flightTime();
+    const distance = positionAt(time).x;
+    const maxHeight = Math.pow(launchSpeed * Math.sin(radians(angleDegrees)), 2) / (2 * GRAVITY);
+    $('angleValue').textContent = angleDegrees + '°';
+    $('speedValue').textContent = launchSpeed.toFixed(1) + ' m/s';
+    $('predicted').textContent = distance.toFixed(1) + ' m';
+    $('maxHeight').textContent = maxHeight.toFixed(1) + ' m';
+    $('flightTime').textContent = time.toFixed(2) + ' s';
+  }
+
+  function reset() {
+    phase = 'ready';
+    currentTime = 0;
+    landingX = null;
+    $('message').textContent = 'Set your angle and speed, then press Launch.';
+    render();
+  }
+
+  function launch() {
+    phase = 'flying';
+    currentTime = 0;
+    launchTime = performance.now();
+    shots += 1;
+    $('shots').textContent = shots;
+    $('message').textContent = 'Flying! Gravity changes the vertical velocity every second.';
+  }
+
+  function animationFrame(now) {
+    if (phase === 'flying') {
+      currentTime = Math.min((now - launchTime) / 1000, flightTime());
+      if (currentTime >= flightTime()) {
+        phase = 'landed';
+        landingX = positionAt(flightTime()).x;
+        const error = Math.abs(landingX - targetMeters);
+        if (error <= TARGET_HALF_WIDTH) {
+          hits += 1;
+          $('score').textContent = hits;
+          $('message').textContent = '🎯 HIT! The landing calculation matches the target.';
+        } else {
+          $('message').textContent = 'Landed ' + error.toFixed(1) + ' m ' + (landingX < targetMeters ? 'short.' : 'too far.') + ' Change angle or speed and try again!';
+        }
+      }
+    }
+    render();
+    requestAnimationFrame(animationFrame);
+  }
+
+  function changeSettings() {
+    angleDegrees = Number($('angle').value);
+    launchSpeed = Number($('speed').value);
+    updateStats();
+    reset();
+  }
+
+  $('angle').addEventListener('input', changeSettings);
+  $('speed').addEventListener('input', changeSettings);
+  $('launch').addEventListener('click', launch);
+  $('reset').addEventListener('click', reset);
+  $('showPrediction').addEventListener('change', render);
+  $('newTarget').addEventListener('click', () => {
+    targetMeters = Math.round((9 + Math.random() * 22) * 2) / 2;
+    reset();
+  });
+  canvas.addEventListener('click', event => {
+    const rect = canvas.getBoundingClientRect();
+    const pixelX = (event.clientX - rect.left) * canvas.width / rect.width;
+    targetMeters = Math.max(5, Math.min(39, (pixelX - ORIGIN_X) / PIXELS_PER_METER));
+    reset();
+  });
+
+  updateStats();
+  requestAnimationFrame(animationFrame);
+</script>
+</body>
+</html>

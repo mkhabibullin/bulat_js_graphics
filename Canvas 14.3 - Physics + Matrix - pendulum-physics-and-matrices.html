@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Physics + Matrices: A Pendulum</title>
+    <style>
+        body {
+            max-width: 650px;
+            margin: 30px auto;
+            padding: 0 16px;
+            font-family: system-ui, sans-serif;
+            color: #1f2937;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: auto;
+            border: 1px solid #cbd5e1;
+            background: white;
+        }
+
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 10px;
+            margin: 14px 0;
+        }
+
+        button, select {
+            padding: 7px 11px;
+            font: inherit;
+        }
+
+        #values {
+            font-family: ui-monospace, monospace;
+            line-height: 1.9;
+        }
+
+        .note {
+            color: #475569;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <h2>Pendulum: physics + matrices</h2>
+    <p>Gravity changes the angle. A matrix turns that angle into a position.</p>
+
+    <canvas id="canvas" width="600" height="360"></canvas>
+
+    <div class="controls">
+        <button id="play">Pause</button>
+        <button id="step">Step 0.05 s</button>
+        <button id="reset">Reset</button>
+        <label for="gravity">Gravity:</label>
+        <select id="gravity">
+            <option value="9.81">Earth (9.81)</option>
+            <option value="1.62">Moon (1.62)</option>
+        </select>
+    </div>
+
+    <div id="values" aria-live="off"></div>
+    <p class="note">Try Pause → Step to watch one calculation at a time.
+        Earth and Moon change only the gravity value.</p>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const values = document.getElementById('values');
+        const playButton = document.getElementById('play');
+
+        // Fixed geometry: 2 meters is drawn as 220 pixels.
+        const pivot = [300, 65];
+        const length = 2;                 // meters (physics)
+        const pixelsPerMeter = 110;       // drawing scale
+        const ropePixels = length * pixelsPerMeter;
+
+        // Physics state. Angles are stored in radians.
+        let gravity = 9.81;              // m/s²
+        let angle = Math.PI / 4;         // 45 degrees
+        let angularVelocity = 0;         // radians / second
+        let angularAcceleration = 0;     // radians / second²
+        let running = true;
+        let lastTime = null;
+
+        // 1. PHYSICS: gravity decides how the angle changes.
+        function updatePhysics(dt) {
+            angularAcceleration = -(gravity / length) * Math.sin(angle);
+            angularVelocity += angularAcceleration * dt;
+            angle += angularVelocity * dt;
+        }
+
+        // 2. MATRICES: rotate around (0, 0), then move to the pivot.
+        function rotationMatrix(a) {
+            return [
+                [Math.cos(a), -Math.sin(a), 0],
+                [Math.sin(a),  Math.cos(a), 0],
+                [0,            0,           1]
+            ];
+        }
+
+        function translationMatrix(x, y) {
+            return [
+                [1, 0, x],
+                [0, 1, y],
+                [0, 0, 1]
+            ];
+        }
+
+        function multiplyMatrices(A, B) {
+            const result = [
+                [0, 0, 0],
+                [0, 0, 0],
+                [0, 0, 0]
+            ];
+
+            for (let row = 0; row < 3; row++) {
+                for (let col = 0; col < 3; col++) {
+                    for (let k = 0; k < 3; k++) {
+                        result[row][col] += A[row][k] * B[k][col];
+                    }
+                }
+            }
+
+            return result;
+        }
+
+        function transformPoint(point, matrix) {
+            const [x, y] = point;
+            return [
+                matrix[0][0] * x + matrix[0][1] * y + matrix[0][2],
+                matrix[1][0] * x + matrix[1][1] * y + matrix[1][2]
+            ];
+        }
+
+        // 3. DRAW: the bob starts at [0, ropePixels] in local coordinates.
+        function draw() {
+            const R = rotationMatrix(angle);
+            const T = translationMatrix(pivot[0], pivot[1]);
+            const M = multiplyMatrices(T, R);
+            const bob = transformPoint([0, ropePixels], M);
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Dotted vertical line: position when at rest.
+            ctx.setLineDash([5, 6]);
+            ctx.strokeStyle = '#cbd5e1';
+            ctx.beginPath();
+            ctx.moveTo(pivot[0], pivot[1]);
+            ctx.lineTo(pivot[0], pivot[1] + ropePixels);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Rope (line).
+            ctx.strokeStyle = '#1f2937';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(pivot[0], pivot[1]);
+            ctx.lineTo(bob[0], bob[1]);
+            ctx.stroke();
+
+            // Pivot and bob (circles).
+            ctx.fillStyle = '#1f2937';
+            ctx.beginPath();
+            ctx.arc(pivot[0], pivot[1], 5, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = '#2563eb';
+            ctx.beginPath();
+            ctx.arc(bob[0], bob[1], 15, 0, Math.PI * 2);
+            ctx.fill();
+
+            values.textContent =
+                `Angle θ: ${angle.toFixed(3)} rad (${(angle * 180 / Math.PI).toFixed(1)}°)\n` +
+                `Angular speed ω: ${angularVelocity.toFixed(3)} rad/s\n` +
+                `Angular acceleration α: ${angularAcceleration.toFixed(3)} rad/s²\n` +
+                `Bob position: (${bob[0].toFixed(1)}, ${bob[1].toFixed(1)}) px`;
+            values.style.whiteSpace = 'pre-line';
+        }
+
+        function animate(time) {
+            if (running) {
+                if (lastTime !== null) {
+                    const dt = Math.min((time - lastTime) / 1000, 0.04);
+                    updatePhysics(dt);
+                }
+                lastTime = time;
+            } else {
+                lastTime = null;
+            }
+
+            draw();
+            requestAnimationFrame(animate);
+        }
+
+        playButton.addEventListener('click', function () {
+            running = !running;
+            playButton.textContent = running ? 'Pause' : 'Play';
+        });
+
+        document.getElementById('step').addEventListener('click', function () {
+            running = false;
+            playButton.textContent = 'Play';
+            updatePhysics(0.05);
+            draw();
+        });
+
+        document.getElementById('reset').addEventListener('click', function () {
+            angle = Math.PI / 4;
+            angularVelocity = 0;
+            angularAcceleration = 0;
+            lastTime = null;
+            draw();
+        });
+
+        document.getElementById('gravity').addEventListener('change', function (event) {
+            gravity = Number(event.target.value);
+        });
+
+        draw();
+        requestAnimationFrame(animate);
+    </script>
+</body>
+</html>

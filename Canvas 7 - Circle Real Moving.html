@@ -1,0 +1,153 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Rolling Wheel with Matrices</title>
+</head>
+<body>
+
+<canvas id="canvas" width="800" height="800"></canvas>
+
+<script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+
+    const A = [80, 300];
+    const B = [520, 600];
+
+    const radius = 55;
+
+    let t = 0;
+    let direction = 1;
+
+    const dx = B[0] - A[0];
+    const dy = B[1] - A[1];
+    const length = Math.hypot(dx, dy);
+
+    function clearCanvas() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+
+    function drawLine(x1, y1, x2, y2) {
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+    }
+
+    function drawCircle(x, y, radius) {
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.stroke();
+    }
+
+    function rotationMatrix(angle) {
+        const cos = Math.cos(angle);
+        const sin = Math.sin(angle);
+
+        return [
+            [cos, -sin, 0],
+            [sin,  cos, 0],
+            [0, 0, 1]
+        ];
+    }
+
+    function translationMatrix(x, y) {
+        return [
+            [1, 0, x],
+            [0, 1, y],
+            [0, 0, 1]
+        ];
+    }
+
+    function multiplyMatrices(A, B) {
+        const result = [
+            [0, 0, 0],
+            [0, 0, 0],
+            [0, 0, 0]
+        ];
+
+        for (let row = 0; row < 3; row++) {
+            for (let col = 0; col < 3; col++) {
+                for (let k = 0; k < 3; k++) {
+                    result[row][col] += A[row][k] * B[k][col];
+                }
+            }
+        }
+
+        return result;
+    }
+
+    function transformPoint(point, matrix) {
+        const [x, y] = point;
+
+        return [
+            x * matrix[0][0] + y * matrix[0][1] + matrix[0][2],
+            x * matrix[1][0] + y * matrix[1][1] + matrix[1][2]
+        ];
+    }
+
+    function drawWheel(matrix) {
+        const center = transformPoint([0, 0], matrix);
+
+        drawCircle(center[0], center[1], radius);
+
+        for (let i = 0; i < 10; i++) {
+            const angle = i * Math.PI / 5;
+
+            const spoke = [
+                radius * Math.cos(angle),
+                radius * Math.sin(angle)
+            ];
+
+            const end = transformPoint(spoke, matrix);
+
+            drawLine(center[0], center[1], end[0], end[1]);
+        }
+    }
+
+    function action() {
+        clearCanvas();
+
+        // Draw the track
+        drawLine(A[0], A[1], B[0], B[1]);
+
+        // Contact point along the track
+        const x = A[0] + dx * t;
+        const y = A[1] + dy * t;
+
+        // Wheel center: radius above the track
+        const cx = x + radius * dy / length;
+        const cy = y - radius * dx / length;
+
+        // Rotation without slipping
+        const distance = t * length;
+        const angle = distance / radius;
+
+        const R = rotationMatrix(angle);
+        const T = translationMatrix(cx, cy);
+
+        const matrix = multiplyMatrices(T, R);
+
+        drawWheel(matrix);
+
+        // Movement
+        t += 0.005 * direction;
+
+        if (t >= 1) {
+            t = 1;
+            direction = -1;
+        }
+
+        if (t <= 0) {
+            t = 0;
+            direction = 1;
+        }
+    }
+
+    action();
+    setInterval(action, 20);
+
+</script>
+</body>
+</html>

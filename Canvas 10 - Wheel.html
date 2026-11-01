@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Wheel hits bump</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+
+        canvas {
+            border: 1px solid gray;
+        }
+    </style>
+</head>
+<body>
+
+<h3>Wheel + bump + jump</h3>
+<p>Click the canvas to restart.</p>
+
+<canvas id="canvas" width="800" height="400"></canvas>
+
+<script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+
+    const roadY = 300;
+    const radius = 30;
+
+    const bumpX = 360;
+    const bumpWidth = 50;
+    const bumpHeight = 25;
+
+    const gravity = 0.5;
+    const speedX = 2;
+
+    let wheelX = 100;
+    let wheelY = roadY - radius;
+
+    let velocityY = 0;
+    let onGround = true;
+
+    let rotationAngle = 0;
+    let bumpTriggered = false;
+
+    function clearCanvas() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+
+    function drawLine(x1, y1, x2, y2) {
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+    }
+
+    function drawCircle(x, y, r) {
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.stroke();
+    }
+
+    function translationMatrix(x, y) {
+        return [
+            [1, 0, x],
+            [0, 1, y],
+            [0, 0, 1]
+        ];
+    }
+
+    function rotationMatrix(angle) {
+        const cos = Math.cos(angle);
+        const sin = Math.sin(angle);
+
+        return [
+            [cos, -sin, 0],
+            [sin,  cos, 0],
+            [0,    0,   1]
+        ];
+    }
+
+    function multiplyMatrices(A, B) {
+        const result = [
+            [0, 0, 0],
+            [0, 0, 0],
+            [0, 0, 0]
+        ];
+
+        for (let row = 0; row < 3; row++) {
+            for (let col = 0; col < 3; col++) {
+                for (let k = 0; k < 3; k++) {
+                    result[row][col] += A[row][k] * B[k][col];
+                }
+            }
+        }
+
+        return result;
+    }
+
+    function transformPoint(point, matrix) {
+        const [x, y] = point;
+
+        const newX =
+            x * matrix[0][0] +
+            y * matrix[0][1] +
+            matrix[0][2];
+
+        const newY =
+            x * matrix[1][0] +
+            y * matrix[1][1] +
+            matrix[1][2];
+
+        return [newX, newY];
+    }
+
+    function drawRoad() {
+        ctx.strokeStyle = 'black';
+        ctx.lineWidth = 2;
+
+        drawLine(50, roadY, 750, roadY);
+    }
+
+    function drawBump() {
+        ctx.strokeStyle = 'brown';
+        ctx.lineWidth = 2;
+
+        const leftX = bumpX;
+        const topX = bumpX + bumpWidth / 2;
+        const rightX = bumpX + bumpWidth;
+
+        ctx.beginPath();
+        ctx.moveTo(leftX, roadY);
+        ctx.lineTo(topX, roadY - bumpHeight);
+        ctx.lineTo(rightX, roadY);
+        ctx.stroke();
+    }
+
+    function drawWheel(x, y, angle) {
+        const T = translationMatrix(x, y);
+        const R = rotationMatrix(angle);
+        const M = multiplyMatrices(T, R);
+
+        // Outer circle
+        drawCircle(x, y, radius);
+
+        // 8 spokes
+        for (let i = 0; i < 8; i++) {
+            const localAngle = i * Math.PI / 4;
+
+            const localPoint = [
+                radius * Math.cos(localAngle),
+                radius * Math.sin(localAngle)
+            ];
+
+            const endPoint = transformPoint(localPoint, M);
+
+            drawLine(x, y, endPoint[0], endPoint[1]);
+        }
+
+        // little marker dot on rim
+        const marker = transformPoint([radius, 0], M);
+
+        ctx.beginPath();
+        ctx.arc(marker[0], marker[1], 4, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    function updateWheel() {
+        // Move right
+        wheelX += speedX;
+
+        // Rotate according to distance traveled
+        rotationAngle += speedX / radius;
+
+        // Trigger jump when wheel reaches the bump
+        if (!bumpTriggered && wheelX + radius >= bumpX + bumpWidth / 2) {
+            velocityY = -10;
+            onGround = false;
+            bumpTriggered = true;
+        }
+
+        // Air physics
+        if (!onGround) {
+            wheelY += velocityY;
+            velocityY += gravity;
+        }
+
+        // Land back on the road
+        const groundY = roadY - radius;
+
+        if (wheelY >= groundY) {
+            wheelY = groundY;
+            velocityY = 0;
+            onGround = true;
+        }
+
+        // Stop when off screen, then reset automatically
+        if (wheelX > 850) {
+            resetScene();
+        }
+    }
+
+    function resetScene() {
+        wheelX = 100;
+        wheelY = roadY - radius;
+        velocityY = 0;
+        onGround = true;
+        rotationAngle = 0;
+        bumpTriggered = false;
+    }
+
+    function action() {
+        clearCanvas();
+
+        updateWheel();
+
+        drawRoad();
+        drawBump();
+        drawWheel(wheelX, wheelY, rotationAngle);
+    }
+
+    canvas.addEventListener('click', function() {
+        resetScene();
+    });
+
+    resetScene();
+    setInterval(action, 20);
+</script>
+
+</body>
+</html>

@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Suspension: See the Matrices</title>
+    <style>
+        body {
+            max-width: 800px;
+            margin: 30px auto;
+            padding: 0 16px;
+            font: 16px/1.5 system-ui, sans-serif;
+        }
+
+        canvas {
+            width: 100%;
+            border: 1px solid #aaa;
+        }
+
+        button {
+            padding: 8px 16px;
+            margin-right: 6px;
+            cursor: pointer;
+        }
+
+        pre {
+            background: #f3f3f3;
+            padding: 12px;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <h2>Wheel + Suspension + Bumpy Road</h2>
+    <p>The road moves left. The wheel stays at the same X position.</p>
+
+    <canvas id="canvas" width="700" height="380"></canvas>
+
+    <p>
+        <button id="pause">Pause</button>
+        <button id="step">Step</button>
+        <button id="reset">Reset</button>
+    </p>
+
+    <pre id="math"></pre>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const math = document.getElementById('math');
+
+        const pivot = [170, 205];
+        const wheelX = 330;
+        const radius = 28;
+        const speed = 2;
+
+        let distance = 0;
+        let wheelAngle = 0;
+        let paused = false;
+
+        // Road = a line with three triangular bumps.
+        function roadHeight(x) {
+            let y = 330;
+
+            for (const [middle, width, height] of [
+                [560, 60, 38],
+                [900, 85, 52],
+                [1240, 50, 30]
+            ]) {
+                y -= height * Math.max(0, 1 - Math.abs(x - middle) / width);
+            }
+
+            return y;
+        }
+
+        function translationMatrix(x, y) {
+            return [
+                [1, 0, x],
+                [0, 1, y],
+                [0, 0, 1]
+            ];
+        }
+
+        function rotationMatrix(angle) {
+            const c = Math.cos(angle);
+            const s = Math.sin(angle);
+
+            return [
+                [c, -s, 0],
+                [s,  c, 0],
+                [0,  0, 1]
+            ];
+        }
+
+        function multiplyMatrices(A, B) {
+            const M = Array.from({ length: 3 }, () => [0, 0, 0]);
+
+            for (let row = 0; row < 3; row++) {
+                for (let col = 0; col < 3; col++) {
+                    for (let k = 0; k < 3; k++) {
+                        M[row][col] += A[row][k] * B[k][col];
+                    }
+                }
+            }
+
+            return M;
+        }
+
+        function transformPoint([x, y], M) {
+            return [
+                M[0][0] * x + M[0][1] * y + M[0][2],
+                M[1][0] * x + M[1][1] * y + M[1][2]
+            ];
+        }
+
+        function drawLine(A, B) {
+            ctx.beginPath();
+            ctx.moveTo(A[0], A[1]);
+            ctx.lineTo(B[0], B[1]);
+            ctx.stroke();
+        }
+
+        function drawCircle(x, y, r) {
+            ctx.beginPath();
+            ctx.arc(x, y, r, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+
+        // Draw a wheel using LOCAL coordinates around (0, 0).
+        function drawWheel() {
+            drawCircle(0, 0, radius);
+            drawCircle(0, 0, 6);
+
+            for (let i = 0; i < 6; i++) {
+                const a = i * Math.PI / 3;
+                drawLine([0, 0], [radius * Math.cos(a), radius * Math.sin(a)]);
+            }
+        }
+
+        // Let Canvas use the transformation matrix we calculated.
+        function useMatrix(M) {
+            ctx.setTransform(
+                M[0][0], M[1][0],
+                M[0][1], M[1][1],
+                M[0][2], M[1][2]
+            );
+        }
+
+        function render() {
+            ctx.resetTransform();
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.strokeStyle = 'black';
+            ctx.lineWidth = 2;
+
+            // Draw road in SCREEN coordinates.
+            ctx.beginPath();
+            for (let x = 0; x <= canvas.width; x += 2) {
+                const y = roadHeight(x + distance);
+                if (x === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+
+            // The wheel center follows the top of the road.
+            const wheelY = roadHeight(wheelX + distance) - radius;
+            const dx = wheelX - pivot[0];
+            const dy = wheelY - pivot[1];
+
+            // Geometry: angle and length of a telescoping arm.
+            const armAngle = Math.atan2(dy, dx);
+            const armLength = Math.hypot(dx, dy);
+
+            // Parent: pivot -> rotate the arm.
+            const armMatrix = multiplyMatrices(
+                translationMatrix(pivot[0], pivot[1]),
+                rotationMatrix(armAngle)
+            );
+
+            // Child: move to the end of the arm -> spin the wheel.
+            const wheelMatrix = multiplyMatrices(
+                multiplyMatrices(armMatrix, translationMatrix(armLength, 0)),
+                rotationMatrix(wheelAngle)
+            );
+
+            const hub = transformPoint([armLength, 0], armMatrix);
+
+            // Chassis and suspension arm: just lines.
+            drawLine([70, pivot[1]], [230, pivot[1]]);
+            drawLine(pivot, hub);
+            drawCircle(pivot[0], pivot[1], 5);
+
+            // Simple zigzag spring in the arm's LOCAL coordinates.
+            ctx.save();
+            useMatrix(armMatrix);
+            ctx.beginPath();
+            ctx.moveTo(armLength * 0.25, 0);
+            for (let i = 0; i <= 8; i++) {
+                const x = armLength * (0.27 + i * 0.07);
+                const y = i % 2 === 0 ? -8 : 8;
+                ctx.lineTo(x, y);
+            }
+            ctx.lineTo(armLength * 0.85, 0);
+            ctx.stroke();
+            ctx.restore();
+
+            // All six spokes rotate together with ONE wheel matrix.
+            ctx.save();
+            useMatrix(wheelMatrix);
+            drawWheel();
+            ctx.restore();
+
+            math.textContent =
+                `Road height:      ${roadHeight(wheelX + distance).toFixed(1)} px\n` +
+                `Wheel center Y:   ${wheelY.toFixed(1)} px\n` +
+                `Arm angle:        ${(armAngle * 180 / Math.PI).toFixed(1)}°\n` +
+                `Arm length:       ${armLength.toFixed(1)} px\n` +
+                `Wheel rotation:   ${(wheelAngle * 180 / Math.PI).toFixed(1)}°\n\n` +
+                `Arm matrix = T(pivot) × R(arm angle)\n` +
+                `Wheel matrix = Arm matrix × T(arm length, 0) × R(wheel rotation)`;
+        }
+
+        function step() {
+            const previousY = roadHeight(wheelX + distance);
+            distance += speed;
+            const nextY = roadHeight(wheelX + distance);
+
+            // Rolling distance along the changing road surface.
+            const travelled = Math.hypot(speed, nextY - previousY);
+            wheelAngle += travelled / radius;
+
+            if (distance > 1400) {
+                distance = 0;
+                wheelAngle = 0;
+            }
+
+            render();
+        }
+
+        document.getElementById('pause').addEventListener('click', function () {
+            paused = !paused;
+            this.textContent = paused ? 'Play' : 'Pause';
+        });
+
+        document.getElementById('step').addEventListener('click', function () {
+            paused = true;
+            document.getElementById('pause').textContent = 'Play';
+            step();
+        });
+
+        document.getElementById('reset').addEventListener('click', function () {
+            distance = 0;
+            wheelAngle = 0;
+            render();
+        });
+
+        render();
+        setInterval(() => { if (!paused) step(); }, 30);
+    </script>
+</body>
+</html>

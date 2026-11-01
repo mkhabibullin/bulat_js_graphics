@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Wheel Lab — A Rolling Wheel & a Bump</title>
+  <style>
+    :root{font-family:Inter,system-ui,-apple-system,Segoe UI,Arial,sans-serif;color:#172435;background:#f3f5f8}
+    *{box-sizing:border-box}
+    body{margin:0;padding:28px 18px}
+    main{width:min(980px,100%);margin:auto}
+    header{display:flex;justify-content:space-between;align-items:end;gap:16px;margin-bottom:20px}
+    .eyebrow{font-size:11px;letter-spacing:.19em;text-transform:uppercase;font-weight:800;color:#64768b}
+    h1{font-size:clamp(23px,3vw,36px);letter-spacing:-.045em;margin:8px 0 4px}
+    .subtitle{font-size:14px;color:#637184;margin:0;line-height:1.5}
+    .chip{font-size:12px;color:#34516a;background:#e6edf3;border:1px solid #d2dee8;border-radius:99px;padding:8px 12px;white-space:nowrap}
+    .stage{border:1px solid #d8e0e9;border-radius:16px;box-shadow:0 15px 50px #1e32400c;overflow:hidden;background:#f8fafe}
+    canvas{display:block;width:100%;height:auto}
+    .controlbar{display:flex;flex-wrap:wrap;align-items:center;gap:12px;justify-content:space-between;padding:16px 20px;background:#fff;border-top:1px solid #dce3eb}
+    .buttons{display:flex;gap:8px}
+    button{border:1px solid #ccd7e2;background:#fff;border-radius:9px;padding:10px 15px;color:#203346;font-size:13px;font-weight:600;font-family:inherit;cursor:pointer}
+    button:hover{background:#f2f6fa}
+    button.primary{background:#192f44;border-color:#192f44;color:#fff}
+    button.primary:hover{background:#304961}
+    .speed{display:flex;align-items:center;gap:12px;font-size:13px;font-weight:600;color:#4e6074}
+    input[type="range"]{accent-color:#2477b7;width:150px;cursor:pointer}
+    output{min-width:65px;text-align:right;font-variant-numeric:tabular-nums}
+    .status{display:flex;align-items:center;gap:8px;color:#55708a;font-size:12px;font-weight:700}
+    .status i{width:8px;height:8px;border-radius:50%;background:#21a77c}
+    .status.air i{background:#eb9b32}
+    .info{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:14px}
+    .info article{padding:17px;background:#fff;border:1px solid #e0e6ed;border-radius:12px}
+    .info strong{font-size:13px;display:block;margin-bottom:7px}
+    .info p{font-size:12px;line-height:1.55;color:#657385;margin:0}
+    code{background:#f0f4f8;padding:1px 4px;border-radius:4px;font-size:12px}
+    footer{margin-top:14px;color:#8290a0;font-size:11px;line-height:1.6}
+    @media(max-width:700px){header{align-items:start;flex-direction:column}.info{grid-template-columns:1fr}.controlbar{align-items:start}.speed{flex:1}input[type=range]{width:100px}}
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <div class="eyebrow">JS Matrices / Experiment 01</div>
+      <h1>The Rolling Wheel</h1>
+      <p class="subtitle">One realistic-looking wheel. One simple road line. One jump.</p>
+    </div>
+    <span class="chip">Pure HTML + JavaScript · Offline</span>
+  </header>
+
+  <div class="stage">
+    <canvas id="canvas" width="900" height="450" aria-label="Animated metal wheel rolling to a small triangular bump and jumping over it"></canvas>
+    <div class="controlbar">
+      <div class="buttons">
+        <button class="primary" id="pause">Pause</button>
+        <button id="restart">↺ Restart</button>
+      </div>
+      <label class="speed" for="speed">Speed
+        <input id="speed" type="range" min="130" max="270" step="10" value="180">
+        <output id="speedValue">180 px/s</output>
+      </label>
+      <div class="status" id="status"><i></i><span>Rolling</span></div>
+    </div>
+  </div>
+
+  <section class="info">
+    <article><strong>01 · Artwork (once)</strong><p>The tire, treads, metal rim, spokes and bolts are drawn on a hidden Canvas and saved as a reusable sprite.</p></article>
+    <article><strong>02 · Matrices (every frame)</strong><p>We combine <code>T × R</code> to move and spin the same sprite — no redrawing every spoke.</p></article>
+    <article><strong>03 · Physics (every frame)</strong><p>Horizontal speed advances the wheel; an impulse starts the jump; gravity brings it back to the road.</p></article>
+  </section>
+  <footer>Learning demo: the jump is intentionally arcade-style, not a complete collision or suspension simulation. The road and bump remain a single line path.</footer>
+</main>
+
+<script>
+'use strict';
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const W = canvas.width;
+const H = canvas.height;
+
+// ---- Geometry and physics constants ----
+const radius = 53;
+const roadY = 324;
+const bumpStart = 422;
+const bumpPeak = 452;
+const bumpEnd = 482;
+const bumpHeight = 24;
+const gravity = 900;           // pixels per second squared
+const jumpImpulse = -500;      // upwards is negative in Canvas coordinates
+
+let speed = 180;               // pixels per second
+let wheelX, wheelY, velocityY, angle, bumpTriggered, airborne;
+let paused = false;
+let lastFrame = null;
+
+// ---- Our existing 3x3 matrix functions ----
+function rotationMatrix(a) {
+  const c = Math.cos(a), s = Math.sin(a);
+  return [[c,-s,0],[s,c,0],[0,0,1]];
+}
+function translationMatrix(x, y) {
+  return [[1,0,x],[0,1,y],[0,0,1]];
+}
+function multiplyMatrices(A, B) {
+  const C = [[0,0,0],[0,0,0],[0,0,0]];
+  for (let row=0;row<3;row++) {
+    for (let col=0;col<3;col++) {
+      for (let k=0;k<3;k++) C[row][col] += A[row][k]*B[k][col];
+    }
+  }
+  return C;
+}
+
+// ---- Draw the realistic wheel ONE TIME on a hidden canvas ----
+const spriteSize = 132; // logical pixels
+const pixelScale = 3;  // render at triple resolution for sharp, smooth details
+const wheelSprite = document.createElement('canvas');
+wheelSprite.width = spriteSize * pixelScale;
+wheelSprite.height = spriteSize * pixelScale;
+const wc = wheelSprite.getContext('2d');
+wc.setTransform(pixelScale,0,0,pixelScale,spriteSize*pixelScale/2,spriteSize*pixelScale/2);
+
+function circle(c, r, fill, stroke=null, strokeWidth=1) {
+  c.beginPath();
+  c.arc(0,0,r,0,Math.PI*2);
+  if (fill) { c.fillStyle=fill; c.fill(); }
+  if (stroke) { c.strokeStyle=stroke; c.lineWidth=strokeWidth; c.stroke(); }
+}
+function makeWheelSprite(c) {
+  // Tire outer silhouette and rubber shading
+  const rubber=c.createRadialGradient(-18,-20,3,0,0,56);
+  rubber.addColorStop(0,'#53616c');
+  rubber.addColorStop(.48,'#242d37');
+  rubber.addColorStop(.77,'#141d26');
+  rubber.addColorStop(.93,'#0b1118');
+  rubber.addColorStop(1,'#05080d');
+  circle(c,55,rubber,'#060a0e',2);
+
+  // Tread blocks around the tire circumference
+  for(let i=0;i<72;i++) {
+    c.save();c.rotate(i*Math.PI/36);
+    c.strokeStyle=i%2===0?'#44515b':'#202c35';
+    c.lineWidth=2.0;
+    c.beginPath();c.moveTo(-3,-53.3);c.lineTo(2,-49.3);c.stroke();
+    c.strokeStyle='#080d13';c.lineWidth=.65;
+    c.beginPath();c.moveTo(4,-53.5);c.lineTo(5,-50.8);c.stroke();
+    c.restore();
+  }
+
+  // Tire sidewall highlights and molded rubber rings
+  circle(c,46,null,'#41505c',1.4);
+  circle(c,44,null,'#0b1016',2.6);
+  circle(c,41.5,null,'#5a6872',.9);
+  circle(c,48.1,null,'#18222b',1);
+
+  // Small sidewall detailing
+  for(let i=0;i<48;i++) {
+    c.save();c.rotate(i*Math.PI/24);
+    c.strokeStyle='#596671';c.globalAlpha=.34;c.lineWidth=.7;
+    c.beginPath();c.moveTo(0,-42.9);c.lineTo(0,-44.2);c.stroke();
+    c.restore();
+  }
+  c.save();c.rotate(-.34);c.font='700 6px Arial, sans-serif';c.textAlign='center';
+  c.fillStyle='#8e9ba5';c.fillText('ROAD  •  01',0,-46.2);c.restore();
+
+  // Brushed-metal lip
+  const rim=c.createRadialGradient(-9,-10,1,0,0,42);
+  rim.addColorStop(0,'#eaf0f6');
+  rim.addColorStop(.56,'#66778a');
+  rim.addColorStop(.77,'#d5dfe9');
+  rim.addColorStop(.91,'#627487');
+  rim.addColorStop(1,'#edf4f9');
+  circle(c,40,rim,'#0b121c',1.7);
+  circle(c,35.8,null,'#f5f9fd',1.4);
+
+  // Dark openings / brake disc behind the alloy spokes
+  const disc=c.createRadialGradient(-9,-12,1,0,0,34.7);
+  disc.addColorStop(0,'#8795a0');
+  disc.addColorStop(.55,'#303b46');
+  disc.addColorStop(.85,'#141e28');
+  disc.addColorStop(1,'#0a1118');
+  circle(c,34.3,disc,'#7a8897',.9);
+  circle(c,28,null,'#778796',1.1);
+  for(let i=0;i<24;i++) {
+    const a=i*Math.PI/12;
+    c.beginPath();c.arc(Math.cos(a)*27.5,Math.sin(a)*27.5,1.25,0,Math.PI*2);
+    c.fillStyle='#0d151e';c.fill();
+  }
+
+  // Five paired, bevelled alloy spokes
+  for(let i=0;i<5;i++) {
+    c.save();c.rotate(i*2*Math.PI/5);
+    for(const sign of [-1,1]) {
+      c.save();c.scale(sign,1);
+      const g=c.createLinearGradient(1,-17,18,-26);
+      g.addColorStop(0,'#75889c');
+      g.addColorStop(.25,'#eef5fb');
+      g.addColorStop(.57,'#b9c7d5');
+      g.addColorStop(1,'#506073');
+      c.beginPath();
+      c.moveTo(2,-8);c.lineTo(7,-11);c.lineTo(16,-31);
+      c.quadraticCurveTo(18,-36,12,-37);
+      c.lineTo(7,-36);c.lineTo(1,-19);c.closePath();
+      c.fillStyle=g;c.fill();c.lineWidth=.75;c.strokeStyle='#273745';c.stroke();
+      c.beginPath();c.moveTo(7,-13);c.lineTo(13,-33);
+      c.lineWidth=1.1;c.strokeStyle='#f4faff';c.stroke();
+      c.restore();
+    }
+    c.restore();
+  }
+
+  // Five lug nuts
+  for(let i=0;i<5;i++) {
+    const a=i*2*Math.PI/5-Math.PI/2;
+    const x=14*Math.cos(a),y=14*Math.sin(a);
+    c.beginPath();c.arc(x,y,3.3,0,Math.PI*2);
+    c.fillStyle='#293744';c.fill();c.strokeStyle='#eff5fa';c.lineWidth=.9;c.stroke();
+    c.beginPath();c.arc(x-.6,y-.7,1.2,0,Math.PI*2);
+    c.fillStyle='#93a8bb';c.fill();
+  }
+
+  // Center cap
+  const cap=c.createRadialGradient(-3,-4,0,0,0,11);
+  cap.addColorStop(0,'#ffffff');
+  cap.addColorStop(.43,'#b7c5d2');
+  cap.addColorStop(.85,'#54687c');
+  cap.addColorStop(1,'#17222d');
+  circle(c,10,cap,'#e2eaf2',1.2);
+  circle(c,5.8,'#3d5165','#aebdcc',.8);
+  c.beginPath();c.arc(-1.5,-2,2.2,0,Math.PI*2);c.fillStyle='#c8d7e5';c.fill();
+
+  // Tiny valve stem detail near rim
+  c.save();c.rotate(.65);c.fillStyle='#141e28';c.fillRect(-2,36,4,4);
+  c.fillStyle='#d9e2eb';c.fillRect(-1.1,35.5,2.2,2.5);c.restore();
+}
+makeWheelSprite(wc);
+
+function resetScene() {
+  wheelX=105;
+  wheelY=roadY-radius;
+  velocityY=0;
+  angle=0;
+  bumpTriggered=false;
+  airborne=false;
+  updateStatus();
+}
+
+// Physics is independent of drawing. dt is elapsed seconds.
+function update(dt) {
+  const travel=speed*dt;
+  wheelX += travel;
+  angle += travel/radius;  // rolling without slipping on the flat road
+
+  // Arcade-style collision: launch just before the wheel reaches the bump.
+  if(!bumpTriggered && wheelX+radius >= bumpStart-3) {
+    bumpTriggered=true;
+    airborne=true;
+    velocityY=jumpImpulse;
+  }
+
+  if(airborne) {
+    wheelY += velocityY*dt;
+    velocityY += gravity*dt;
+    if(wheelY >= roadY-radius) {
+      wheelY=roadY-radius;
+      velocityY=0;
+      airborne=false;
+    }
+  }
+
+  if(wheelX > W+radius) resetScene();
+  updateStatus();
+}
+
+function updateStatus() {
+  const status=document.getElementById('status');
+  status.classList.toggle('air',airborne);
+  status.querySelector('span').textContent=airborne?'Airborne':'Rolling';
+}
+
+function drawRoad() {
+  // The entire road AND bump are exactly one simple line path.
+  ctx.save();
+  ctx.strokeStyle='#546a7b';
+  ctx.lineWidth=2.5;
+  ctx.lineJoin='round';
+  ctx.lineCap='round';
+  ctx.beginPath();
+  ctx.moveTo(32,roadY);
+  ctx.lineTo(bumpStart,roadY);
+  ctx.lineTo(bumpPeak,roadY-bumpHeight);
+  ctx.lineTo(bumpEnd,roadY);
+  ctx.lineTo(W-32,roadY);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawShadow() {
+  // Fades and spreads as the wheel rises; never changes the road geometry.
+  const height=Math.max(0,(roadY-radius)-wheelY);
+  ctx.save();
+  ctx.filter='blur(9px)';
+  ctx.globalAlpha=Math.max(.05,.24-height/950);
+  ctx.fillStyle='#1e2e3c';
+  ctx.beginPath();
+  ctx.ellipse(wheelX,roadY+4,radius+7+height*.16,5+height*.025,0,0,Math.PI*2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawWheel() {
+  // Own matrix maths: rotate around the wheel's local origin, then translate.
+  const T=translationMatrix(wheelX,wheelY);
+  const R=rotationMatrix(angle);
+  const M=multiplyMatrices(T,R);
+
+  ctx.save();
+  // Bridge our 3x3 matrix into Canvas's six-number transform API.
+  ctx.setTransform(M[0][0], M[1][0], M[0][1], M[1][1], M[0][2], M[1][2]);
+  ctx.drawImage(wheelSprite,-spriteSize/2,-spriteSize/2,spriteSize,spriteSize);
+  ctx.restore();
+}
+
+function render() {
+  ctx.clearRect(0,0,W,H);
+  const bg=ctx.createLinearGradient(0,0,0,H);
+  bg.addColorStop(0,'#f9fbfe');
+  bg.addColorStop(1,'#edf3f9');
+  ctx.fillStyle=bg;
+  ctx.fillRect(0,0,W,H);
+
+  // Tiny technical captions; the road itself remains only a line.
+  ctx.font='600 11px system-ui,sans-serif';
+  ctx.fillStyle='#8595a6';
+  ctx.fillText('ROLLING SURFACE',42,roadY+34);
+  ctx.fillText('BUMP',bumpPeak-17,roadY-bumpHeight-15);
+
+  drawShadow();
+  drawRoad();
+  drawWheel();
+}
+
+// requestAnimationFrame gives a real time delta so speed is frame-rate independent.
+function frame(now) {
+  if(lastFrame===null) lastFrame=now;
+  const dt=Math.min((now-lastFrame)/1000,.033);
+  lastFrame=now;
+  if(!paused) update(dt);
+  render();
+  requestAnimationFrame(frame);
+}
+
+const pauseButton=document.getElementById('pause');
+pauseButton.addEventListener('click',()=>{
+  paused=!paused;
+  pauseButton.textContent=paused?'▶ Resume':'Pause';
+});
+document.getElementById('restart').addEventListener('click',resetScene);
+document.getElementById('speed').addEventListener('input',e=>{
+  speed=Number(e.target.value);
+  document.getElementById('speedValue').textContent=`${speed} px/s`;
+});
+
+resetScene();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

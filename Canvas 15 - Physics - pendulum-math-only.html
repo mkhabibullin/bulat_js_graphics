@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pendulum: See the Math</title>
+  <style>
+    body { font: 16px system-ui, sans-serif; max-width: 800px; padding: 16px; margin: auto; line-height: 1.5; }
+    canvas { border: 1px solid #999; width: 100%; height: auto; display: block; }
+    .controls { display: flex; flex-wrap: wrap; gap: 12px 24px; margin: 16px 0; }
+    label { display: flex; flex-direction: column; min-width: 185px; }
+    button { font: inherit; padding: 6px 12px; cursor: pointer; }
+    pre { font: 14px/1.6 monospace; white-space: pre-wrap; background: #f5f5f5; padding: 12px; }
+    .note { color: #555; }
+  </style>
+</head>
+<body>
+  <h1>Pendulum: see the math</h1>
+  <p>Only lines and circles. Press <b>Step (0.05 s)</b> to apply the physics formula once.</p>
+
+  <canvas id="canvas" width="760" height="400"></canvas>
+
+  <div class="controls">
+    <label>Release angle: <span id="angleLabel">55°</span>
+      <input id="releaseAngle" type="range" min="10" max="80" step="5" value="55">
+    </label>
+    <label>Gravity: <span id="gravityLabel">9.81 m/s²</span>
+      <input id="gravity" type="range" min="1.6" max="15" step="0.01" value="9.81">
+    </label>
+    <label>Rope length: <span id="lengthLabel">2.30 m</span>
+      <input id="length" type="range" min="1.8" max="2.5" step="0.1" value="2.3">
+    </label>
+  </div>
+
+  <p>
+    <button id="step">Step (0.05 s)</button>
+    <button id="play">Play</button>
+    <button id="reset">Reset</button>
+  </p>
+
+  <p><strong>Real pendulum physics:</strong> angular acceleration = −(gravity / length) × sin(angle).</p>
+  <pre id="numbers"></pre>
+  <p class="note">The pendulum follows the physics equation (ideal rope, no air resistance). The tower is just a line; its falling after a hit is a <strong>simplified game rule</strong>, not an accurate collision simulation.</p>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+
+    const pivot = [280, 60];
+    const floorY = 340;
+    const towerX = 420;
+    const towerHeight = 105;
+    const ballRadius = 18;
+    const pixelsPerMeter = 100;
+    const dt = 0.05; // 0.05 seconds per physics step
+
+    let angle = 0;      // radians from vertical
+    let velocity = 0;   // angular velocity, radians/second
+    let acceleration = 0; // angular acceleration, radians/second²
+    let towerAngle = 0;
+    let towerFalling = false;
+    let hit = false;
+    let time = 0;
+    let running = false;
+    let calculation = '';
+
+    function gravity() {
+      return Number(document.getElementById('gravity').value);
+    }
+
+    function ropeLength() {
+      return Number(document.getElementById('length').value);
+    }
+
+    function drawLine(x1, y1, x2, y2) {
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+    }
+
+    function drawCircle(x, y, radius) {
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    function ballPosition() {
+      const lengthPx = ropeLength() * pixelsPerMeter;
+      return [
+        pivot[0] + lengthPx * Math.sin(angle),
+        pivot[1] + lengthPx * Math.cos(angle)
+      ];
+    }
+
+    function stepPhysics() {
+      const oldAngle = angle;
+      const oldVelocity = velocity;
+      let impactThisStep = false;
+
+      // The real physics: angular acceleration caused by gravity
+      acceleration = -(gravity() / ropeLength()) * Math.sin(angle);
+
+      // Calculate the next moment (semi-implicit Euler integration)
+      velocity += acceleration * dt;
+      angle += velocity * dt;
+      time += dt;
+
+      const [x, y] = ballPosition();
+      const oldX = pivot[0] + ropeLength() * pixelsPerMeter * Math.sin(oldAngle);
+
+      // Simple GAME rule: if the ball touches the tower while moving right, topple it.
+      if (!hit && velocity > 0 && oldX + ballRadius < towerX &&
+          x + ballRadius >= towerX &&
+          y + ballRadius >= floorY - towerHeight) {
+        hit = true;
+        impactThisStep = true;
+        towerFalling = true;
+        velocity *= 0.65; // a simplified impact energy loss
+      }
+
+      if (towerFalling) {
+        towerAngle = Math.min(Math.PI / 2, towerAngle + 2.2 * dt);
+      }
+
+      calculation =
+        `a = -(g / L) x sin(angle)\n` +
+        `  = -(${gravity().toFixed(2)} / ${ropeLength().toFixed(2)}) x sin(${oldAngle.toFixed(3)})\n` +
+        `  = ${acceleration.toFixed(3)} rad/s²\n\n` +
+        `speed = old speed + a x dt\n` +
+        `      = ${oldVelocity.toFixed(3)} + (${acceleration.toFixed(3)}) x ${dt}\n` +
+        `      = ${(oldVelocity + acceleration * dt).toFixed(3)} rad/s\n\n` +
+        `angle = old angle + speed x dt\n` +
+        `      = ${oldAngle.toFixed(3)} + ${(oldVelocity + acceleration * dt).toFixed(3)} x ${dt}` +
+        (impactThisStep ? `\n\nGame impact rule: speed x 0.65 = ${velocity.toFixed(3)} rad/s` : '');
+
+      draw();
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.strokeStyle = 'black';
+      ctx.lineWidth = 2;
+
+      // Floor
+      drawLine(30, floorY, 730, floorY);
+
+      // Vertical reference line (0°)
+      ctx.setLineDash([4, 6]);
+      ctx.lineWidth = 1;
+      drawLine(pivot[0], pivot[1], pivot[0], pivot[1] + ropeLength() * pixelsPerMeter);
+      ctx.setLineDash([]);
+      ctx.lineWidth = 2;
+
+      // Pendulum: one rope line and two circles
+      const [x, y] = ballPosition();
+      drawLine(pivot[0], pivot[1], x, y);
+      drawCircle(pivot[0], pivot[1], 5);
+      drawCircle(x, y, ballRadius);
+
+      // Tower: just one line rotating around its bottom
+      drawLine(towerX, floorY,
+               towerX + towerHeight * Math.sin(towerAngle),
+               floorY - towerHeight * Math.cos(towerAngle));
+      drawCircle(towerX, floorY, 4);
+
+      document.getElementById('numbers').textContent =
+        `Time: ${time.toFixed(2)} s     Angle: ${(angle * 180 / Math.PI).toFixed(1)}° (${angle.toFixed(3)} rad)\n` +
+        `Angular speed: ${velocity.toFixed(3)} rad/s     Hit tower: ${hit ? 'yes' : 'no'}\n\n` + calculation;
+    }
+
+    function reset() {
+      running = false;
+      document.getElementById('play').textContent = 'Play';
+      angle = -Number(document.getElementById('releaseAngle').value) * Math.PI / 180;
+      velocity = 0;
+      acceleration = -(gravity() / ropeLength()) * Math.sin(angle);
+      towerAngle = 0;
+      towerFalling = false;
+      hit = false;
+      time = 0;
+      calculation = 'Ready. Press Step to see the first calculation.';
+      document.getElementById('angleLabel').textContent = document.getElementById('releaseAngle').value + '°';
+      document.getElementById('gravityLabel').textContent = gravity().toFixed(2) + ' m/s²';
+      document.getElementById('lengthLabel').textContent = ropeLength().toFixed(2) + ' m';
+      draw();
+    }
+
+    document.getElementById('step').addEventListener('click', () => {
+      running = false;
+      document.getElementById('play').textContent = 'Play';
+      stepPhysics();
+    });
+    document.getElementById('play').addEventListener('click', () => {
+      running = !running;
+      document.getElementById('play').textContent = running ? 'Pause' : 'Play';
+    });
+    document.getElementById('reset').addEventListener('click', reset);
+    for (const id of ['releaseAngle', 'gravity', 'length']) {
+      document.getElementById(id).addEventListener('input', reset);
+    }
+
+    setInterval(() => { if (running) stepPhysics(); }, 50);
+    reset();
+  </script>
+</body>
+</html>

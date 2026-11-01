@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Pendulum Lab | Wrecking Ball Physics</title>
+  <style>
+    :root{color-scheme:dark;--ink:#eaf3ff;--muted:#9cb1c9;--line:#273e57;--panel:#101f30;--blue:#5bc9ff;--amber:#ffb957;--green:#75e0b0}
+    *{box-sizing:border-box}
+    body{margin:0;background:radial-gradient(ellipse at 15% -5%,#213d5d 0,transparent 45%),#091420;color:var(--ink);font:15px/1.5 system-ui,-apple-system,Segoe UI,Arial,sans-serif}
+    .wrap{max-width:1200px;margin:0 auto;padding:27px 20px 44px}
+    .eyebrow{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--blue);font-weight:800;margin:0 0 7px}
+    h1{font-size:clamp(30px,4vw,45px);line-height:1.1;margin:0 0 8px;letter-spacing:-.045em}
+    .intro{color:var(--muted);margin:0 0 19px;max-width:790px}
+    .layout{display:grid;grid-template-columns:minmax(0,1fr) 306px;gap:16px;align-items:start}
+    .stage{min-width:0;background:#0e1d2e;border:1px solid #2a4059;border-radius:17px;overflow:hidden;box-shadow:0 16px 44px #0005}
+    canvas{display:block;width:100%;height:auto;aspect-ratio:1100/580;touch-action:pan-y}
+    .stagefoot{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:12px 16px;border-top:1px solid #263a51;color:var(--muted);font-size:12px;flex-wrap:wrap}
+    #message{color:#ffd58a;font-weight:700}
+    .sidebar{background:#112135;border:1px solid #2a4059;border-radius:17px;padding:19px}
+    .sectionlabel{font-weight:800;letter-spacing:.08em;font-size:11px;text-transform:uppercase;color:#8ab4ce;margin-bottom:13px}
+    .control{margin-bottom:20px}
+    .row{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:6px}
+    label{font-weight:650;color:#dceafb}
+    output{color:#89ddff;font-variant-numeric:tabular-nums;font-weight:800}
+    input[type=range]{width:100%;accent-color:#6acaff;cursor:pointer;margin:0}
+    .range{display:flex;justify-content:space-between;color:#7792ac;font-size:11px}
+    .btnrow{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:17px 0 12px}
+    button{border:1px solid #38536e;border-radius:10px;background:#21384f;color:#eaf3ff;padding:11px 12px;font-weight:750;cursor:pointer;font:inherit;transition:background .15s,transform .15s}
+    button:hover{background:#30516d}button:active{transform:translateY(1px)}
+    button.primary{background:linear-gradient(110deg,#4ed2ff,#71e6bd);color:#082035;border:0;font-weight:850}
+    button.primary:hover{background:linear-gradient(110deg,#78e1ff,#abf1d8)}
+    .readouts{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:16px}
+    .metric{background:#13283d;border:1px solid #29435a;border-radius:12px;padding:11px 12px}
+    .metric small{display:block;color:#93aac2;font-size:11px;margin-bottom:4px}
+    .metric strong{font-size:21px;letter-spacing:-.025em;font-variant-numeric:tabular-nums}
+    .explain{margin-top:17px;padding:18px 20px;background:#102136;border:1px solid #29415b;border-radius:16px}
+    .explain h2{font-size:19px;margin:0 0 10px}.formula{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;color:#a8ebff;font-size:15px;background:#081727;border-radius:8px;padding:10px 13px;overflow-x:auto}
+    .explain p{color:#b8c9dc;margin:10px 0 0}
+    .explain a{color:#7ed7ff}
+    .legend{display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:12px;color:#a9bed2;margin-bottom:10px}
+    .dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--blue);margin-right:4px}
+    @media(max-width:900px){.layout{grid-template-columns:1fr}.sidebar{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 17px}.btnrow{grid-column:span 2}}
+    @media(max-width:520px){.wrap{padding:18px 10px 34px}.sidebar{grid-template-columns:1fr}.btnrow{grid-column:auto}.readouts{grid-template-columns:1fr 1fr}.readouts .metric:last-child{grid-column:span 2}.stagefoot{font-size:11px}.explain{padding:15px}}
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <div class="eyebrow">Physics lab / Experiment 03</div>
+    <h1>Wrecking ball <span style="color:#72d6ff">pendulum</span></h1>
+    <p class="intro">A real gravity-driven swing, a stack to knock down, and a little bit of game physics. Change the settings, predict the result, then release the ball.</p>
+    <div class="layout">
+      <section>
+        <div class="stage">
+          <canvas id="canvas" width="1100" height="580" role="img" aria-label="Animated pendulum wrecking ball and a stack of blocks"></canvas>
+          <div class="stagefoot"><span id="message" role="status">Ready. Choose settings and press Release.</span><span>Space = release · R = reset</span></div>
+        </div>
+        <div class="readouts" aria-live="polite">
+          <div class="metric"><small>Current ball speed</small><strong id="speedNow">0.00 m/s</strong></div>
+          <div class="metric"><small>Predicted bottom speed*</small><strong id="speedPrediction">—</strong></div>
+          <div class="metric"><small>Collision impulse</small><strong id="impulseReadout">—</strong></div>
+        </div>
+      </section>
+      <aside class="sidebar" aria-label="Experiment controls">
+        <div class="sectionlabel" style="grid-column:1/-1">Change the experiment</div>
+        <div class="control">
+          <div class="row"><label for="angle">Release angle</label><output id="angleValue">65°</output></div>
+          <input id="angle" type="range" min="20" max="80" step="1" value="65">
+          <div class="range"><span>20°</span><span>80°</span></div>
+        </div>
+        <div class="control">
+          <div class="row"><label for="mass">Ball mass</label><output id="massValue">24 kg</output></div>
+          <input id="mass" type="range" min="4" max="40" step="1" value="24">
+          <div class="range"><span>4 kg</span><span>40 kg</span></div>
+        </div>
+        <div class="control">
+          <div class="row"><label for="length">Rope length</label><output id="lengthValue">2.6 m</output></div>
+          <input id="length" type="range" min="1.9" max="3.0" step="0.1" value="2.6">
+          <div class="range"><span>1.9 m</span><span>3.0 m</span></div>
+        </div>
+        <div class="control">
+          <div class="row"><label for="gravity">Gravity</label><output id="gravityValue">9.81 m/s²</output></div>
+          <input id="gravity" type="range" min="1.6" max="20" step="0.1" value="9.8">
+          <div class="range"><span>Moon-like</span><span>Jupiter-like</span></div>
+        </div>
+        <div class="btnrow">
+          <button id="release" class="primary">▶ Release</button>
+          <button id="reset">↻ Reset</button>
+        </div>
+        <p style="color:#94acc4;font-size:12px;line-height:1.5;margin:0">Try changing <b>mass</b> while keeping the angle, length, and gravity unchanged. Does the swing speed change? What about the impact?</p>
+      </aside>
+    </div>
+    <section class="explain">
+      <div class="eyebrow">The real physics equation</div>
+      <h2>Gravity makes the ball swing</h2>
+      <div class="formula">angularAcceleration = -(gravity / length) * Math.sin(angle);</div>
+      <p>This is the <a href="https://en.wikipedia.org/wiki/Pendulum_(mechanics)" target="_blank" rel="noopener">nonlinear pendulum equation</a>: <b>α = −(g/L) sin(θ)</b>. The game updates angular velocity and angle many times per second. Its swinging motion is based on this equation, not an animation trick.</p>
+      <p><b>*Predicted bottom speed:</b> v = √[2gL(1 − cos θ₀)] from conservation of energy. This ignores air resistance and any collision. <b>Block toppling:</b> an educational approximation using a collision impulse and rotation around a corner, not a full rigid-body physics engine.</p>
+    </section>
+  </main>
+<script>
+'use strict';
+
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const GROUND_Y = 500;
+const PIVOT_X = 387;
+const PX_PER_M = 99;
+const BALL_R = 31;
+const TOWER_X = 547;
+const BLOCK_W = 59;
+const BLOCK_H = 46;
+const BLOCK_COUNT = 3;
+const TOWER_MASS = 12;  // kilograms (simplified rigid tower)
+const RESTITUTION = 0.25;
+
+const inputs = {
+  angle: document.getElementById('angle'),
+  mass: document.getElementById('mass'),
+  length: document.getElementById('length'),
+  gravity: document.getElementById('gravity')
+};
+const UI = {
+  angle:document.getElementById('angleValue'),
+  mass:document.getElementById('massValue'),
+  length:document.getElementById('lengthValue'),
+  gravity:document.getElementById('gravityValue'),
+  speed:document.getElementById('speedNow'),
+  predicted:document.getElementById('speedPrediction'),
+  impulse:document.getElementById('impulseReadout'),
+  message:document.getElementById('message'),
+  release:document.getElementById('release')
+};
+
+let settings;
+let state;
+
+function readSettings() {
+  return {
+    angle: +inputs.angle.value,
+    mass: +inputs.mass.value,
+    length: +inputs.length.value,
+    gravity: +inputs.gravity.value
+  };
+}
+function refreshReadouts() {
+  UI.angle.textContent = settings.angle + '°';
+  UI.mass.textContent = settings.mass + ' kg';
+  UI.length.textContent = settings.length.toFixed(1) + ' m';
+  UI.gravity.textContent = settings.gravity.toFixed(1) + ' m/s²';
+  const a = settings.angle * Math.PI / 180;
+  const speed = Math.sqrt(2 * settings.gravity * settings.length * (1 - Math.cos(a)));
+  UI.predicted.textContent = speed.toFixed(2) + ' m/s';
+}
+function reset() {
+  settings = readSettings();
+  state = {
+    angle: -settings.angle * Math.PI / 180,
+    angularVelocity: 0,
+    phase: 'ready',
+    time: 0,
+    hit: false,
+    towerAngle: 0,
+    towerOmega: 0,
+    knocked: false,
+    impulse: 0,
+    impactSpeed: 0,
+    particles: [],
+    simulatedTime: 0
+  };
+  UI.message.textContent = 'Ready. Choose settings and press Release.';
+  UI.release.textContent = '▶ Release';
+  UI.speed.textContent = '0.00 m/s';
+  UI.impulse.textContent = '—';
+  refreshReadouts();
+  draw();
+}
+function release() {
+  if (state.phase === 'running') {
+    state.phase = 'paused';
+    UI.release.textContent = '▶ Resume';
+    UI.message.textContent = 'Paused. Resume when ready.';
+  } else if (state.phase === 'paused') {
+    state.phase = 'running';
+    UI.release.textContent = '❚❚ Pause';
+    UI.message.textContent = state.hit ? 'Tower hit — watch it topple!' : 'Swinging…';
+  } else {
+    reset();
+    state.phase = 'running';
+    UI.release.textContent = '❚❚ Pause';
+    UI.message.textContent = 'Swinging… will it reach the tower?';
+  }
+}
+
+function geometry() {
+  const lengthPX = settings.length * PX_PER_M;
+  const pivotY = GROUND_Y - BALL_R - lengthPX;
+  return {
+    pivotY,
+    ballX:PIVOT_X + lengthPX * Math.sin(state.angle),
+    ballY:pivotY + lengthPX * Math.cos(state.angle),
+    vx:settings.length * state.angularVelocity * Math.cos(state.angle)
+  };
+}
+
+function detectCollision(g) {
+  if (state.hit || g.vx <= 0.05) return null;
+  // Test the swinging circle against the three unrotated block rectangles.
+  for (let i=0;i<BLOCK_COUNT;i++) {
+    const top = GROUND_Y-(i+1)*BLOCK_H;
+    const nx = Math.max(TOWER_X, Math.min(g.ballX, TOWER_X + BLOCK_W));
+    const ny = Math.max(top, Math.min(g.ballY, top+BLOCK_H));
+    if ((g.ballX-nx)**2 + (g.ballY-ny)**2 <= BALL_R**2) {
+      return {x:nx,y:ny,index:i};
+    }
+  }
+  return null;
+}
+
+function impact(contact, g) {
+  state.hit = true;
+  state.impactSpeed = Math.abs(settings.length * state.angularVelocity);
+
+  // Horizontal collision impulse between pendulum and an effective tower mass.
+  // Pendulum horizontal inverse effective mass is cos²(angle)/ballMass.
+  const c = Math.cos(state.angle);
+  const inverseMass = (c*c)/settings.mass + 1/TOWER_MASS;
+  const J = (1+RESTITUTION) * g.vx / inverseMass;
+  state.impulse = J;
+  state.angularVelocity -= (J*c)/(settings.mass*settings.length);
+
+  // Treat the stack as one rigid body toppling around its bottom-right corner.
+  // This is a teaching simplification, not a box-by-box rigid-body solver.
+  const w = BLOCK_W/PX_PER_M;
+  const h = (BLOCK_COUNT*BLOCK_H)/PX_PER_M;
+  const momentOfInertia = TOWER_MASS*(w*w+h*h)/3;
+  const lever = Math.max(0.22, (GROUND_Y-contact.y)/PX_PER_M);
+  state.towerOmega = Math.min(5, (J*lever)/momentOfInertia);
+  state.towerAngle = 0.009;
+
+  state.particles = Array.from({length:20},(_,i)=>({
+    x:contact.x,y:contact.y,
+    vx:(Math.random()-.45)*130,vy:(Math.random()-.9)*170,
+    life:0.45+Math.random()*.3,r:1.5+Math.random()*3
+  }));
+  UI.impulse.textContent = J.toFixed(1) + ' N·s';
+  UI.message.textContent = 'IMPACT! Watch gravity topple the blocks.';
+}
+
+function simulate(dt) {
+  if (state.phase !== 'running') return;
+  state.time += dt;
+  const acc = -(settings.gravity/settings.length) * Math.sin(state.angle) - .014*state.angularVelocity;
+  state.angularVelocity += acc*dt;
+  state.angle += state.angularVelocity*dt;
+
+  const g = geometry();
+  const contact = detectCollision(g);
+  if (contact) impact(contact,g);
+
+  if (state.hit && !state.knocked) {
+    const widthM = BLOCK_W/PX_PER_M;
+    const heightM = (BLOCK_COUNT*BLOCK_H)/PX_PER_M;
+    const inertia = TOWER_MASS*(widthM*widthM + heightM*heightM)/3;
+    // Gravity torque about the support corner of the simplified stack.
+    const horizontalCOM = -.5*widthM*Math.cos(state.towerAngle) + .5*heightM*Math.sin(state.towerAngle);
+    const angularAcceleration = TOWER_MASS*settings.gravity*horizontalCOM / inertia - .3*state.towerOmega;
+    state.towerOmega += angularAcceleration * dt;
+    state.towerAngle += state.towerOmega * dt;
+    if (state.towerAngle < 0) {
+      state.towerAngle = 0;
+      state.towerOmega = 0;
+    }
+    if (state.towerAngle >= Math.PI/2) {
+      state.towerAngle = Math.PI/2;
+      state.towerOmega = 0;
+      state.knocked = true;
+      UI.message.textContent = 'TOWER DOWN! Try a lighter ball or weaker gravity.';
+    }
+  }
+  for(const p of state.particles){p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=200*dt;p.life-=dt;}
+  state.particles = state.particles.filter(p=>p.life>0);
+
+  if (state.time>12 || (!state.hit && state.angle > 0 && state.angularVelocity <= 0)) {
+    state.phase = 'finished';
+    UI.release.textContent = '▶ Try again';
+    if (!state.hit) UI.message.textContent = 'Missed! Try increasing the release angle or rope length.';
+    else if (!state.knocked) UI.message.textContent = 'The tower survived! Increase the mass or release angle.';
+  }
+  UI.speed.textContent = (settings.length*Math.abs(state.angularVelocity)).toFixed(2)+' m/s';
+}
+
+function line(x1,y1,x2,y2,color,width=1){ctx.beginPath();ctx.strokeStyle=color;ctx.lineWidth=width;ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();}
+function roundRect(x,y,w,h,r){ctx.beginPath();ctx.roundRect(x,y,w,h,r);}
+
+function drawBackdrop(){
+  let grad=ctx.createLinearGradient(0,0,0,580);
+  grad.addColorStop(0,'#0c1b30');grad.addColorStop(1,'#162d43');
+  ctx.fillStyle=grad;ctx.fillRect(0,0,1100,580);
+  ctx.strokeStyle='#ffffff0a';ctx.lineWidth=1;
+  for(let x=0;x<=1100;x+=50)line(x,0,x,500,'#ffffff0b');
+  for(let y=0;y<=500;y+=50)line(0,y,1100,y,'#ffffff0b');
+  // Distant construction silhouettes
+  ctx.fillStyle='#193248';
+  for(let i=0;i<13;i++){const h=45+(i*43)%120;ctx.fillRect(i*91-8,500-h,64,h);}
+  ctx.fillStyle='#243b4c';ctx.fillRect(0,500,1100,80);
+  ctx.fillStyle='#142b39';ctx.fillRect(0,510,1100,70);
+  line(0,500,1100,500,'#8cbbcb',3);
+  for(let x=18;x<1100;x+=42)line(x,525,x+19,525,'#668296',2);
+  ctx.fillStyle='#8fb0c4';ctx.font='14px system-ui';ctx.fillText('GROUND / zero height',25,558);
+  ctx.fillStyle='#b7c9d7';ctx.font='bold 13px system-ui';ctx.fillText('TOWER',TOWER_X+5,332);
+}
+
+function drawCrane(g){
+  // Crane structure (decorative; no physics effect)
+  const x=PIVOT_X, y=g.pivotY;
+  line(x-80,y-30,x+62,y-30,'#4f6b80',14);
+  line(x-80,y-30,x-80,500,'#314d60',13);
+  for(let i=y;i<500;i+=35){line(x-85,i,x-35,Math.min(i+30,500),'#4c6c80',4);}
+  line(x-75,470,x+5,470,'#49687b',10);
+  line(x-15,y-30,x-15,y+10,'#64829a',5);
+  line(x-15,y+10,x,y,'#728b9d',4);
+  ctx.fillStyle='#273b4e';ctx.fillRect(x-91,y-44,190,22);
+  for(let i=0;i<7;i++){ctx.fillStyle=i%2?'#f59f33':'#243f53';ctx.fillRect(x-82+i*23,y-43,12,20);}
+  // Swing arc reference
+  ctx.save();ctx.setLineDash([5,10]);ctx.strokeStyle='#6ebeff3a';ctx.lineWidth=2;
+  ctx.beginPath();const L=settings.length*PX_PER_M;
+  ctx.arc(x,y,L,Math.PI/2-80*Math.PI/180,Math.PI/2+80*Math.PI/180);ctx.stroke();
+  ctx.restore();
+  line(x,y,g.ballX,g.ballY,'#9fbdd1',7);
+  line(x,y,g.ballX,g.ballY,'#dce8ee',2);
+  const hub=ctx.createRadialGradient(g.ballX-9,g.ballY-12,4,g.ballX,g.ballY,BALL_R);
+  hub.addColorStop(0,'#e9f0f6');hub.addColorStop(.27,'#a2b3c2');hub.addColorStop(.73,'#43566b');hub.addColorStop(1,'#182a3d');
+  ctx.fillStyle=hub;ctx.strokeStyle='#c9d2de';ctx.lineWidth=2;
+  ctx.beginPath();ctx.arc(g.ballX,g.ballY,BALL_R,0,Math.PI*2);ctx.fill();ctx.stroke();
+  ctx.fillStyle='#ffffff56';ctx.beginPath();ctx.arc(g.ballX-12,g.ballY-12,5,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#1d3647';ctx.beginPath();ctx.arc(x,y,10,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#a5bac7';ctx.lineWidth=4;ctx.stroke();
+  // Angle label and small pivot marker
+  ctx.fillStyle='#c0deec';ctx.font='13px system-ui';ctx.fillText('θ = '+(Math.abs(state.angle)*180/Math.PI).toFixed(1)+'°',x+20,y+28);
+}
+
+function drawTower(){
+  ctx.save();
+  ctx.translate(TOWER_X+BLOCK_W,GROUND_Y);
+  ctx.rotate(state.towerAngle);
+  ctx.translate(-(TOWER_X+BLOCK_W),-GROUND_Y);
+  for(let i=0;i<BLOCK_COUNT;i++){
+    const x=TOWER_X,y=GROUND_Y-(i+1)*BLOCK_H;
+    ctx.fillStyle=['#f9b14a','#f0c36b','#fbd18a'][i];
+    ctx.strokeStyle='#714723';ctx.lineWidth=2;
+    roundRect(x+2,y+2,BLOCK_W-4,BLOCK_H-4,4);ctx.fill();ctx.stroke();
+    ctx.fillStyle='#ffe8b2';ctx.fillRect(x+7,y+8,BLOCK_W-14,4);
+    ctx.fillStyle='#ae783e';ctx.font='bold 14px system-ui';ctx.textAlign='center';ctx.fillText(String(BLOCK_COUNT-i),x+BLOCK_W/2,y+31);
+    ctx.textAlign='left';
+  }
+  ctx.restore();
+}
+
+function drawParticles(){
+  for(const p of state.particles){
+    ctx.globalAlpha=Math.min(1,p.life/.5);
+    ctx.fillStyle='#fbd18a';ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,2*Math.PI);ctx.fill();
+  }
+  ctx.globalAlpha=1;
+}
+function draw(){
+  const g=geometry();
+  drawBackdrop();
+  drawTower();
+  drawCrane(g);
+  drawParticles();
+  ctx.fillStyle='#a7bfd1';ctx.font='14px system-ui';
+  ctx.fillText('L = '+settings.length.toFixed(1)+' m',PIVOT_X-90,35);
+  ctx.fillText('m = '+settings.mass+' kg',PIVOT_X+22,35);
+  if(state.phase==='ready'){
+    ctx.fillStyle='#86dfff';ctx.font='bold 19px system-ui';ctx.fillText('RELEASE THE BALL →',60,80);
+  }
+}
+
+for(const [name,input] of Object.entries(inputs)) {
+  input.addEventListener('input',reset);
+}
+document.getElementById('release').addEventListener('click',release);
+document.getElementById('reset').addEventListener('click',reset);
+document.addEventListener('keydown',event=>{
+  if(event.code==='Space' && event.target.tagName!=='BUTTON' && event.target.tagName!=='INPUT'){event.preventDefault();release();}
+  if(event.key.toLowerCase()==='r' && event.target.tagName!=='INPUT')reset();
+});
+
+const STEP=1/180;
+let last=0,accumulator=0;
+function frame(now){
+  if(last){
+    const dt=Math.min((now-last)/1000,.05);
+    if(state.phase==='running') {
+      accumulator+=dt;
+      let n=0;
+      while(accumulator>=STEP && n<10){simulate(STEP);accumulator-=STEP;n++;}
+    }else accumulator=0;
+  }
+  last=now;
+  draw();
+  requestAnimationFrame(frame);
+}
+reset();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

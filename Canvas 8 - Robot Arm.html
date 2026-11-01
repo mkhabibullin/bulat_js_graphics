@@ -1,0 +1,178 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Robot Arm - Matrices</title>
+</head>
+<body>
+
+<p>Shoulder: A / D | Elbow: J / L</p>
+
+<canvas id="canvas" width="800" height="800"
+        style="border:1px solid gray">
+</canvas>
+
+<script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+
+    const base = [220, 300];
+
+    const upperLength = 120;
+    const forearmLength = 100;
+
+    let shoulderAngle = -55 * Math.PI / 180;
+    let elbowAngle = 70 * Math.PI / 180;
+
+    function clearCanvas() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+
+    function drawLine(x1, y1, x2, y2) {
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+    }
+
+    function drawCircle(x, y, radius) {
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.stroke();
+    }
+
+    function rotationMatrix(angle) {
+        const cos = Math.cos(angle);
+        const sin = Math.sin(angle);
+
+        return [
+            [cos, -sin, 0],
+            [sin,  cos, 0],
+            [0, 0, 1]
+        ];
+    }
+
+    function translationMatrix(x, y) {
+        return [
+            [1, 0, x],
+            [0, 1, y],
+            [0, 0, 1]
+        ];
+    }
+
+    function multiplyMatrices(A, B) {
+        const result = [
+            [0, 0, 0],
+            [0, 0, 0],
+            [0, 0, 0]
+        ];
+
+        for (let row = 0; row < 3; row++) {
+            for (let col = 0; col < 3; col++) {
+                for (let k = 0; k < 3; k++) {
+                    result[row][col] += A[row][k] * B[k][col];
+                }
+            }
+        }
+
+        return result;
+    }
+
+    function transformPoint(point, matrix) {
+        const [x, y] = point;
+
+        return [
+            x * matrix[0][0] + y * matrix[0][1] + matrix[0][2],
+            x * matrix[1][0] + y * matrix[1][1] + matrix[1][2]
+        ];
+    }
+
+    function action() {
+        clearCanvas();
+
+        // Shoulder transformation
+        const shoulderMatrix = multiplyMatrices(
+            translationMatrix(base[0], base[1]),
+            rotationMatrix(shoulderAngle)
+        );
+
+        // Elbow position
+        const elbowPoint = transformPoint(
+            [upperLength, 0],
+            shoulderMatrix
+        );
+
+        // Elbow transformation
+        const elbowMatrix = multiplyMatrices(
+            shoulderMatrix,
+            translationMatrix(upperLength, 0)
+        );
+
+        // Hand transformation
+        const handMatrix = multiplyMatrices(
+            elbowMatrix,
+            rotationMatrix(elbowAngle)
+        );
+
+        // Hand position
+        const handPoint = transformPoint(
+            [forearmLength, 0],
+            handMatrix
+        );
+
+        // Draw upper arm
+        ctx.strokeStyle = 'blue';
+        ctx.lineWidth = 10;
+
+        drawLine(
+            base[0], base[1],
+            elbowPoint[0], elbowPoint[1]
+        );
+
+        // Draw forearm
+        ctx.strokeStyle = 'green';
+        ctx.lineWidth = 8;
+
+        drawLine(
+            elbowPoint[0], elbowPoint[1],
+            handPoint[0], handPoint[1]
+        );
+
+        // Draw joints
+        ctx.strokeStyle = 'black';
+        ctx.lineWidth = 2;
+
+        drawCircle(base[0], base[1], 8);
+        drawCircle(elbowPoint[0], elbowPoint[1], 7);
+        drawCircle(handPoint[0], handPoint[1], 5);
+    }
+
+    // Keyboard controls
+    document.addEventListener('keydown', function(event) {
+        const step = 5 * Math.PI / 180;
+
+        switch (event.key.toLowerCase()) {
+            case 'a':
+                shoulderAngle -= step;
+                break;
+            case 'd':
+                shoulderAngle += step;
+                break;
+            case 'j':
+                elbowAngle -= step;
+                break;
+            case 'l':
+                elbowAngle += step;
+                break;
+            default:
+                return;
+        }
+
+        action();
+    });
+
+    action();
+
+</script>
+</body>
+</html>

@@ -1,0 +1,160 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Matrix Cube</title>
+</head>
+<body>
+    <canvas id="canvas" width="800" height="800"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const center = [canvas.width / 2, canvas.height / 2];
+
+        const angle = 15;
+        const radians = angle * Math.PI / 180;
+        const cos = Math.cos(radians);
+        const sin = Math.sin(radians);
+        const shiftX = 20;
+        const scale = 1.1;
+
+        const cx = center[0];
+        const cy = center[1];
+
+        let points = [
+            [300, 350], [450, 350],
+            [450, 500], [300, 500],
+            [350, 300], [500, 300],
+            [500, 450], [350, 450]
+        ];
+
+        const edges = [
+            [0, 1], [1, 2], [2, 3], [3, 0],
+            [4, 5], [5, 6], [6, 7], [7, 4],
+            [0, 4], [1, 5], [2, 6], [3, 7]
+        ];
+
+        const rotationMatrix = [
+            [cos, -sin, cx - cos * cx + sin * cy],
+            [sin,  cos, cy - sin * cx - cos * cy],
+            [0,    0,   1]
+        ];
+
+        const shiftMatrix = [
+            [1, 0, shiftX],
+            [0, 1, 0],
+            [0, 0, 1]
+        ];
+        
+        const zoomMatrix = [
+            [scale, 0, cx * (1 - scale)],
+            [0, scale, cy * (1 - scale)],
+            [0, 0, 1]
+        ];
+
+        function multiplyMatrices(A, B) {
+            const result = [
+                [0, 0, 0],
+                [0, 0, 0],
+                [0, 0, 0]
+            ];
+
+            for (let row = 0; row < 3; row++) {
+                for (let col = 0; col < 3; col++) {
+                    for (let k = 0; k < 3; k++) {
+                        result[row][col] += A[row][k] * B[k][col];
+                    }
+                }
+            }
+
+            return result;
+        }
+
+        const combinedMatrix = multiplyMatrices(
+            shiftMatrix,
+            rotationMatrix
+        );
+
+        function clearCanvas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+
+        function drawLine(x1, y1, x2, y2) {
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.stroke();
+        }
+
+        function drawCube() {
+            for (const [i, j] of edges) {
+                const A = points[i];
+                const B = points[j];
+
+                drawLine(A[0], A[1], B[0], B[1]);
+            }
+        }
+
+        
+        canvas.addEventListener('mousedown', function(event) {
+            let scale;
+
+            if (event.button === 0) {
+                scale = 1.1;       // Left click: zoom in
+            } else if (event.button === 2) {
+                scale = 1 / 1.1;   // Right click: zoom out
+            } else {
+                return;
+            }
+
+            const zoomMatrix = [
+                [scale, 0, center[0] * (1 - scale)],
+                [0, scale, center[1] * (1 - scale)],
+                [0, 0, 1]
+            ];
+
+            clearCanvas();
+
+            for (let i = 0; i < points.length; i++) {
+                points[i] = transformPoint(points[i], zoomMatrix);
+            }
+
+            drawCube();
+        });
+
+        // Disable browser's right-click menu on the Canvas
+        canvas.addEventListener('contextmenu', function(event) {
+            event.preventDefault();
+        });
+
+
+        function transformPoint(point, matrix) {
+            const [x, y] = point;
+
+            const newX = x * matrix[0][0] +
+                         y * matrix[0][1] +
+                             matrix[0][2];
+
+            const newY = x * matrix[1][0] +
+                         y * matrix[1][1] +
+                             matrix[1][2];
+
+            return [newX, newY];
+        }
+
+        function action() {
+            clearCanvas();
+
+            for (let i = 0; i < points.length; i++) {
+                points[i] = transformPoint(points[i], combinedMatrix);
+            }
+
+            drawCube();
+        }
+
+        drawCube();
+        setInterval(action, 100);
+    </script>
+</body>
+</html>
