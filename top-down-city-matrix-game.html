@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>City Loop — Top-Down Driving</title>
+    <style>
+        :root {
+            color-scheme: dark;
+            font-family: system-ui, -apple-system, Segoe UI, sans-serif;
+            background: #101820;
+            color: #f3f6f8;
+        }
+
+        * { box-sizing: border-box; }
+
+        body { margin: 0; }
+
+        main {
+            max-width: 1080px;
+            margin: 0 auto;
+            padding: 20px 14px 36px;
+        }
+
+        h1 { font-size: clamp(24px, 4vw, 34px); margin: 0 0 3px; }
+        p { color: #aebdc7; margin: 3px 0 13px; line-height: 1.5; }
+
+        .topline, .hud, .buttons, .legend {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .topline { justify-content: space-between; margin-bottom: 14px; }
+        .game { overflow: hidden; border: 1px solid #496072; border-radius: 14px; background: #202d36; }
+
+        .hud {
+            padding: 12px 16px;
+            justify-content: space-between;
+            background: #1b2a34;
+            border-bottom: 1px solid #415260;
+        }
+
+        .hud strong { color: #7eeac6; }
+        .hud span { font-size: 13px; }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: auto;
+            background: #343c44;
+            touch-action: none;
+        }
+
+        .under-game { padding: 12px 16px; border-top: 1px solid #415260; }
+        .buttons { justify-content: space-between; }
+
+        button {
+            cursor: pointer;
+            border: 1px solid #536f83;
+            color: #eef7ff;
+            background: #263b4a;
+            border-radius: 9px;
+            padding: 10px 14px;
+            font: inherit;
+            font-weight: 600;
+        }
+
+        button:hover, button:focus-visible { background: #335265; }
+        button:focus-visible { outline: 2px solid #7eeac6; outline-offset: 2px; }
+        .legend { color: #c4d2dc; font-size: 13px; }
+
+        .touch-controls { display: flex; gap: 8px; margin-top: 12px; justify-content: center; }
+        .touch-controls button { min-width: 58px; padding: 13px; user-select: none; touch-action: none; }
+
+        .lesson {
+            border: 1px solid #394b5a;
+            border-radius: 14px;
+            padding: 17px 20px;
+            margin-top: 15px;
+            background: #17242e;
+        }
+
+        .lesson h2 { margin: 0 0 8px; font-size: 18px; }
+        .lesson p { margin-bottom: 6px; }
+        pre {
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+            font-size: 13px;
+            line-height: 1.65;
+            color: #d5f1e6;
+            margin: 8px 0 0;
+        }
+
+        .message { font-size: 13px; color: #ffc983; min-height: 20px; margin-top: 8px; }
+
+        @media (min-width: 740px) {
+            .touch-controls { display: none; }
+        }
+    </style>
+</head>
+<body>
+<main>
+    <div class="topline">
+        <div>
+            <h1>City Loop 🚗</h1>
+            <p>A tiny original top-down driving game. Drive along streets and collect the yellow checkpoints.</p>
+        </div>
+        <button id="restart" type="button">Restart game</button>
+    </div>
+
+    <section class="game" aria-label="Top-down driving game">
+        <div class="hud">
+            <span>CHECKPOINTS <strong id="score">0 / 6</strong></span>
+            <span>SPEED <strong id="speed">0</strong> px/s</span>
+            <span>HEADING <strong id="heading">0°</strong></span>
+            <span>NEXT <strong id="distance">—</strong></span>
+        </div>
+
+        <canvas id="canvas" width="1000" height="620" aria-label="City with roads and a player-controlled car"></canvas>
+
+        <div class="under-game">
+            <div class="buttons">
+                <div class="legend"><strong>W / ↑</strong> accelerate · <strong>S / ↓</strong> reverse · <strong>A,D / ←,→</strong> steer · <strong>Space</strong> brake</div>
+                <button id="pause" type="button">Pause</button>
+            </div>
+            <div class="touch-controls" aria-label="Touch driving controls">
+                <button type="button" data-key="a" aria-label="Steer left">◀</button>
+                <button type="button" data-key="w" aria-label="Accelerate">▲</button>
+                <button type="button" data-key="s" aria-label="Reverse">▼</button>
+                <button type="button" data-key="d" aria-label="Steer right">▶</button>
+            </div>
+            <div class="message" id="message" aria-live="polite">Follow the yellow checkpoint marker. Stay on the roads.</div>
+        </div>
+    </section>
+
+    <section class="lesson">
+        <h2>The math behind the car</h2>
+        <p><strong>Movement physics:</strong> acceleration changes speed; speed changes position. Rotation determines which way the car moves.</p>
+        <pre>speed += acceleration × dt
+x += cos(angle) × speed × dt
+y += sin(angle) × speed × dt</pre>
+        <p style="margin-top:13px"><strong>One transformation matrix</strong> positions and rotates the *whole* car — wheels, lights, and windows together:</p>
+        <pre id="matrixOutput">M = [ 1.00  0.00  0.00 ]
+    [ 0.00  1.00  0.00 ]
+    [ 0.00  0.00  1.00 ]</pre>
+        <p style="margin-top:10px">The matrix is <strong>M = Translation × Rotation</strong>. Everything in <code>drawCar()</code> is drawn in local coordinates around (0, 0). The car uses simple arcade movement, not a full tire or suspension physics model.</p>
+    </section>
+</main>
+
+<script>
+    'use strict';
+
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+
+    const TILE = 240;
+    const ROAD_WIDTH = 90;
+    const WORLD_SIZE = TILE * 10;
+    const ROAD_CENTER = TILE / 2;
+
+    const keys = new Set();
+    const deliveries = [
+        [840, 360],
+        [840, 840],
+        [1320, 840],
+        [1320, 1320],
+        [1800, 1320],
+        [1800, 1800]
+    ];
+
+    const car = { x: 360, y: 360, angle: 0, speed: 0 };
+    const camera = { x: 0, y: 0 };
+    let score = 0;
+    let paused = false;
+    let lastTime = null;
+    let collisionFlash = 0;
+
+    // =========================================================
+    // MATRIX FORMULA 1: Rotation + translation (homogeneous 2D)
+    //
+    // R = [ cos(a)  -sin(a)   0 ]
+    //     [ sin(a)   cos(a)   0 ]
+    //     [   0        0      1 ]
+    //
+    // T = [ 1  0  x ]
+    //     [ 0  1  y ]
+    //     [ 0  0  1 ]
+    // =========================================================
+
+    function rotationMatrix(angle) {
+        const c = Math.cos(angle);
+        const s = Math.sin(angle);
+
+        return [
+            [c, -s, 0],
+            [s,  c, 0],
+            [0,  0, 1]
+        ];
+    }
+
+    function translationMatrix(x, y) {
+        return [
+            [1, 0, x],
+            [0, 1, y],
+            [0, 0, 1]
+        ];
+    }
+
+    function multiplyMatrices(A, B) {
+        const result = [
+            [0, 0, 0],
+            [0, 0, 0],
+            [0, 0, 0]
+        ];
+
+        for (let row = 0; row < 3; row++) {
+            for (let col = 0; col < 3; col++) {
+                for (let k = 0; k < 3; k++) {
+                    result[row][col] += A[row][k] * B[k][col];
+                }
+            }
+        }
+
+        return result;
+    }
+
+    function distanceToRoadCenter(value) {
+        const nearest = Math.round((value - ROAD_CENTER) / TILE) * TILE + ROAD_CENTER;
+        return Math.abs(value - nearest);
+    }
+
+    function isOnRoad(x, y) {
+        if (x < 70 || y < 70 || x > WORLD_SIZE - 70 || y > WORLD_SIZE - 70) {
+            return false;
+        }
+
+        const clearance = ROAD_WIDTH / 2 - 12;
+        return distanceToRoadCenter(x) < clearance ||
+               distanceToRoadCenter(y) < clearance;
+    }
+
+    function clamp(value, min, max) {
+        return Math.max(min, Math.min(max, value));
+    }
+
+    // =========================================================
+    // PHYSICS FORMULA 2: Motion along a heading direction
+    //
+    // speed_new = speed_old + acceleration * dt
+    // dx = cos(angle) * speed * dt
+    // dy = sin(angle) * speed * dt
+    //
+    // dt is measured in seconds, NOT frames.
+    // =========================================================
+
+    function updateCar(dt) {
+        const accelerating = keys.has('w') || keys.has('arrowup');
+        const reversing = keys.has('s') || keys.has('arrowdown');
+        const left = keys.has('a') || keys.has('arrowleft');
+        const right = keys.has('d') || keys.has('arrowright');
+
+        if (accelerating) car.speed += 300 * dt;
+        if (reversing) car.speed -= 340 * dt;
+
+        // Friction slows the car down when no throttle is pressed.
+        const friction = keys.has(' ') ? 6 : 0.9;
+        car.speed *= Math.exp(-friction * dt);
+        car.speed = clamp(car.speed, -130, 265);
+
+        const steering = Number(right) - Number(left);
+        const steeringFactor = clamp(Math.abs(car.speed) / 160, 0.25, 1);
+
+        car.angle += steering * 2.7 * dt * steeringFactor * Math.sign(car.speed || 1);
+
+        const newX = car.x + Math.cos(car.angle) * car.speed * dt;
+        const newY = car.y + Math.sin(car.angle) * car.speed * dt;
+
+        if (isOnRoad(newX, newY)) {
+            car.x = newX;
+            car.y = newY;
+        } else {
+            car.speed *= -0.2;
+            collisionFlash = 0.15;
+        }
+    }
+
+    function updateCamera() {
+        camera.x = clamp(car.x - canvas.width / 2, 0, WORLD_SIZE - canvas.width);
+        camera.y = clamp(car.y - canvas.height / 2, 0, WORLD_SIZE - canvas.height);
+    }
+
+    function drawRoads() {
+        ctx.fillStyle = '#28353a';
+        ctx.fillRect(0, 0, WORLD_SIZE, WORLD_SIZE);
+
+        for (let i = 0; i < 10; i++) {
+            const road = ROAD_CENTER + i * TILE;
+
+            ctx.fillStyle = '#444e54';
+            ctx.fillRect(road - ROAD_WIDTH / 2, 0, ROAD_WIDTH, WORLD_SIZE);
+            ctx.fillRect(0, road - ROAD_WIDTH / 2, WORLD_SIZE, ROAD_WIDTH);
+
+            ctx.strokeStyle = '#99a9ad';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([16, 20]);
+
+            ctx.beginPath();
+            ctx.moveTo(road, 0);
+            ctx.lineTo(road, WORLD_SIZE);
+            ctx.moveTo(0, road);
+            ctx.lineTo(WORLD_SIZE, road);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
+        // Erase lane markings where two streets cross.
+        for (let x = 0; x < 10; x++) {
+            for (let y = 0; y < 10; y++) {
+                const cx = ROAD_CENTER + x * TILE;
+                const cy = ROAD_CENTER + y * TILE;
+                ctx.fillStyle = '#444e54';
+                ctx.fillRect(cx - ROAD_WIDTH / 2, cy - ROAD_WIDTH / 2,
+                             ROAD_WIDTH, ROAD_WIDTH);
+            }
+        }
+    }
+
+    function drawCityBlocks() {
+        for (let x = 0; x < 9; x++) {
+            for (let y = 0; y < 9; y++) {
+                const left = ROAD_CENTER + x * TILE + ROAD_WIDTH / 2;
+                const top = ROAD_CENTER + y * TILE + ROAD_WIDTH / 2;
+                const size = TILE - ROAD_WIDTH;
+                const type = (x * 7 + y * 11) % 8;
+
+                // Sidewalk bordering the building block.
+                ctx.fillStyle = '#929d99';
+                ctx.fillRect(left, top, size, size);
+
+                if (type === 0) {
+                    // A few little parks to make the city easier to navigate.
+                    ctx.fillStyle = '#477457';
+                    ctx.fillRect(left + 8, top + 8, size - 16, size - 16);
+                    ctx.strokeStyle = '#d6dbc4';
+                    ctx.lineWidth = 7;
+                    ctx.beginPath();
+                    ctx.moveTo(left + 14, top + size - 14);
+                    ctx.lineTo(left + size - 14, top + 14);
+                    ctx.stroke();
+
+                    for (const [tx, ty] of [[35, 35], [110, 105], [42, 110]]) {
+                        ctx.fillStyle = '#284b38';
+                        ctx.beginPath();
+                        ctx.arc(left + tx, top + ty, 13, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                } else {
+                    const colors = ['#8a756b', '#69899a', '#a28b71', '#7b8399', '#847f77'];
+                    const color = colors[(x + 2 * y) % colors.length];
+
+                    ctx.fillStyle = '#20282d';
+                    ctx.fillRect(left + 16, top + 19, size - 22, size - 22);
+                    ctx.fillStyle = color;
+                    ctx.fillRect(left + 11, top + 11, size - 22, size - 22);
+                    ctx.strokeStyle = '#cad3d2';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(left + 17, top + 17, size - 34, size - 34);
+
+                    // Simple roof details, not complicated textures.
+                    ctx.fillStyle = '#b3c6c4';
+                    ctx.fillRect(left + 32, top + 32, 32, 20);
+                    ctx.fillRect(left + 82, top + 83, 30, 28);
+                }
+            }
+        }
+    }
+
+    function drawTarget(time) {
+        if (score >= deliveries.length) return;
+
+        const [x, y] = deliveries[score];
+        const radius = 25 + Math.sin(time * 4) * 4;
+
+        ctx.strokeStyle = '#ffe270';
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.fillStyle = '#ffcb47';
+        ctx.fillRect(x - 8, y - 8, 16, 16);
+        ctx.fillStyle = '#664400';
+        ctx.font = 'bold 12px system-ui';
+        ctx.textAlign = 'center';
+        ctx.fillText('GO', x, y - 36);
+        ctx.textAlign = 'left';
+    }
+
+    function drawCar() {
+        // =====================================================
+        // MATRIX FORMULA 3: Transform the WHOLE car at once.
+        //
+        // M = T(car position on screen) * R(car heading)
+        //
+        // Every shape below uses LOCAL coordinates around (0,0).
+        // Wheels, windows and lights rotate together automatically.
+        // =====================================================
+
+        const M = multiplyMatrices(
+            translationMatrix(car.x - camera.x, car.y - camera.y),
+            rotationMatrix(car.angle)
+        );
+
+        ctx.save();
+        ctx.setTransform(
+            M[0][0], M[1][0],
+            M[0][1], M[1][1],
+            M[0][2], M[1][2]
+        );
+
+        // Car points right in its LOCAL coordinate system.
+        ctx.fillStyle = '#141b21';
+        ctx.fillRect(-19, -19, 13, 6);
+        ctx.fillRect(10, -19, 13, 6);
+        ctx.fillRect(-19, 13, 13, 6);
+        ctx.fillRect(10, 13, 13, 6);
+
+        ctx.fillStyle = '#e67a43';
+        ctx.fillRect(-29, -14, 58, 28);
+        ctx.fillStyle = '#ffac64';
+        ctx.fillRect(-21, -12, 38, 24);
+
+        ctx.fillStyle = '#a7deec';
+        ctx.fillRect(1, -10, 10, 20);  // Front window
+        ctx.fillStyle = '#294e62';
+        ctx.fillRect(-15, -10, 10, 20); // Rear window
+
+        ctx.fillStyle = '#fff4ca';
+        ctx.fillRect(26, -11, 4, 6);
+        ctx.fillRect(26, 5, 4, 6);
+
+        ctx.fillStyle = '#ff5257';
+        ctx.fillRect(-30, -10, 4, 6);
+        ctx.fillRect(-30, 4, 4, 6);
+
+        ctx.restore();
+
+        document.getElementById('matrixOutput').textContent =
+            `M = [ ${M[0].map(v => v.toFixed(2).padStart(8)).join(' ')} ]\n` +
+            `    [ ${M[1].map(v => v.toFixed(2).padStart(8)).join(' ')} ]\n` +
+            `    [ ${M[2].map(v => v.toFixed(2).padStart(8)).join(' ')} ]`;
+    }
+
+    function updateGoal() {
+        if (score >= deliveries.length) return;
+
+        const [x, y] = deliveries[score];
+        const distance = Math.hypot(car.x - x, car.y - y);
+
+        if (distance < 38) {
+            score++;
+            document.getElementById('score').textContent = `${score} / ${deliveries.length}`;
+            document.getElementById('message').textContent =
+                score === deliveries.length
+                    ? 'All checkpoints collected! You win. Press Restart to play again.'
+                    : 'Checkpoint collected! Find the next yellow marker.';
+        }
+    }
+
+    function render(time) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        updateCamera();
+
+        ctx.save();
+        ctx.translate(-camera.x, -camera.y);
+        drawRoads();
+        drawCityBlocks();
+        drawTarget(time);
+        ctx.restore();
+
+        drawCar();
+
+        if (collisionFlash > 0) {
+            ctx.strokeStyle = '#ff685e';
+            ctx.lineWidth = 6;
+            ctx.strokeRect(3, 3, canvas.width - 6, canvas.height - 6);
+        }
+
+        document.getElementById('speed').textContent = Math.round(Math.abs(car.speed));
+        document.getElementById('heading').textContent =
+            `${Math.round((car.angle * 180 / Math.PI + 36000) % 360)}°`;
+
+        const target = deliveries[score];
+        document.getElementById('distance').textContent = target
+            ? `${Math.round(Math.hypot(car.x - target[0], car.y - target[1]))} px`
+            : 'FINISHED';
+    }
+
+    function reset() {
+        car.x = 360;
+        car.y = 360;
+        car.angle = 0;
+        car.speed = 0;
+        score = 0;
+        collisionFlash = 0;
+        paused = false;
+        lastTime = null;
+        keys.clear();
+        document.getElementById('score').textContent = `0 / ${deliveries.length}`;
+        document.getElementById('pause').textContent = 'Pause';
+        document.getElementById('message').textContent =
+            'Follow the yellow checkpoint marker. Stay on the roads.';
+        render(0);
+    }
+
+    function frame(now) {
+        if (lastTime === null) lastTime = now;
+        const dt = Math.min((now - lastTime) / 1000, 0.04);
+        lastTime = now;
+
+        if (!paused && score < deliveries.length) {
+            updateCar(dt);
+            updateGoal();
+        }
+
+        collisionFlash = Math.max(0, collisionFlash - dt);
+        render(now / 1000);
+        requestAnimationFrame(frame);
+    }
+
+    const keyMap = new Set([
+        'w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '
+    ]);
+
+    document.addEventListener('keydown', event => {
+        const key = event.key.toLowerCase();
+        if (keyMap.has(key)) {
+            event.preventDefault();
+            keys.add(key);
+        }
+    });
+
+    document.addEventListener('keyup', event => {
+        keys.delete(event.key.toLowerCase());
+    });
+
+    window.addEventListener('blur', () => keys.clear());
+    document.getElementById('restart').addEventListener('click', reset);
+
+    document.getElementById('pause').addEventListener('click', () => {
+        paused = !paused;
+        document.getElementById('pause').textContent = paused ? 'Resume' : 'Pause';
+    });
+
+    document.querySelectorAll('[data-key]').forEach(button => {
+        const key = button.dataset.key;
+
+        button.addEventListener('pointerdown', event => {
+            event.preventDefault();
+            button.setPointerCapture(event.pointerId);
+            keys.add(key);
+        });
+
+        const release = () => keys.delete(key);
+        button.addEventListener('pointerup', release);
+        button.addEventListener('pointercancel', release);
+        button.addEventListener('lostpointercapture', release);
+    });
+
+    reset();
+    requestAnimationFrame(frame);
+</script>
+</body>
+</html>
