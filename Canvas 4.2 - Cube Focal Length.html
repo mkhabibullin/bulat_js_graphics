@@ -1,0 +1,981 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+
+<title>3D куб — перспектива и камера</title>
+
+<style>
+
+body {
+    font-family: Arial, sans-serif;
+    text-align: center;
+}
+
+canvas {
+    border: 1px solid black;
+    background: #fafafa;
+}
+
+.controls {
+    width: 600px;
+    margin: 20px auto;
+    text-align: left;
+}
+
+.control {
+    margin: 12px 0;
+}
+
+input[type="range"] {
+    width: 350px;
+}
+
+.value {
+    display: inline-block;
+    width: 60px;
+    font-weight: bold;
+}
+
+pre {
+    width: 650px;
+    margin: 20px auto;
+    text-align: left;
+    background: #eeeeee;
+    padding: 15px;
+}
+
+</style>
+</head>
+
+<body>
+
+
+<h2>3D куб — камера и перспектива</h2>
+
+
+<canvas
+    id="canvas"
+    width="800"
+    height="550">
+</canvas>
+
+
+
+<div class="controls">
+
+
+    <!-- ============================================== -->
+    <!-- ФОКУСНОЕ РАССТОЯНИЕ -->
+    <!-- ============================================== -->
+
+    <div class="control">
+
+        Фокус f:
+
+        <input
+            id="focalSlider"
+            type="range"
+            min="100"
+            max="1000"
+            value="400"
+            step="10"
+        >
+
+        <span
+            id="focalValue"
+            class="value">
+            400
+        </span>
+
+    </div>
+
+
+
+    <!-- ============================================== -->
+    <!-- CAMERA X -->
+    <!-- ============================================== -->
+
+    <div class="control">
+
+        Камера X:
+
+        <input
+            id="cameraXSlider"
+            type="range"
+            min="-8"
+            max="8"
+            value="0"
+            step="0.1"
+        >
+
+        <span
+            id="cameraXValue"
+            class="value">
+            0
+        </span>
+
+    </div>
+
+
+
+    <!-- ============================================== -->
+    <!-- CAMERA Y -->
+    <!-- ============================================== -->
+
+    <div class="control">
+
+        Камера Y:
+
+        <input
+            id="cameraYSlider"
+            type="range"
+            min="-5"
+            max="5"
+            value="0"
+            step="0.1"
+        >
+
+        <span
+            id="cameraYValue"
+            class="value">
+            0
+        </span>
+
+    </div>
+
+
+
+    <!-- ============================================== -->
+    <!-- CAMERA Z -->
+    <!-- ============================================== -->
+
+    <div class="control">
+
+        Камера Z:
+
+        <input
+            id="cameraZSlider"
+            type="range"
+            min="-10"
+            max="7"
+            value="0"
+            step="0.1"
+        >
+
+        <span
+            id="cameraZValue"
+            class="value">
+            0
+        </span>
+
+    </div>
+
+
+</div>
+
+
+<pre id="info"></pre>
+
+
+
+<script>
+
+
+// ======================================================
+// CANVAS
+// ======================================================
+
+const canvas =
+    document.getElementById("canvas");
+
+const ctx =
+    canvas.getContext("2d");
+
+
+
+// ======================================================
+// РАЗМЕРЫ КУБА
+// ======================================================
+
+const width  = 4;
+const height = 4;
+const depth  = 4;
+
+
+const halfWidth =
+    width / 2;
+
+const halfHeight =
+    height / 2;
+
+const halfDepth =
+    depth / 2;
+
+
+
+// ======================================================
+// ПОЛОЖЕНИЕ КУБА В МИРЕ
+// ======================================================
+//
+// Куб находится не в камере,
+// а на расстоянии 12 единиц впереди.
+//
+// Центр куба:
+//
+// (0, 0, 12)
+//
+// ======================================================
+
+const cubeX = 0;
+const cubeY = 0;
+const cubeZ = 12;
+
+
+
+// ======================================================
+// ЛОКАЛЬНЫЕ ВЕРШИНЫ КУБА
+// ======================================================
+//
+// Пока куб находится вокруг собственного центра:
+//
+// x = -2 или +2
+// y = -2 или +2
+// z = -2 или +2
+//
+// ======================================================
+
+const localVertices = [
+
+    [-halfWidth, -halfHeight, -halfDepth],
+    [ halfWidth, -halfHeight, -halfDepth],
+    [ halfWidth,  halfHeight, -halfDepth],
+    [-halfWidth,  halfHeight, -halfDepth],
+
+
+    [-halfWidth, -halfHeight,  halfDepth],
+    [ halfWidth, -halfHeight,  halfDepth],
+    [ halfWidth,  halfHeight,  halfDepth],
+    [-halfWidth,  halfHeight,  halfDepth]
+
+];
+
+
+
+// ======================================================
+// РЁБРА
+// ======================================================
+
+const edges = [
+
+    // задняя сторона
+
+    [0, 1],
+    [1, 2],
+    [2, 3],
+    [3, 0],
+
+
+    // передняя сторона
+
+    [4, 5],
+    [5, 6],
+    [6, 7],
+    [7, 4],
+
+
+    // соединения
+
+    [0, 4],
+    [1, 5],
+    [2, 6],
+    [3, 7]
+
+];
+
+
+
+// ======================================================
+// УГЛЫ ПОВОРОТА КУБА
+// ======================================================
+
+const angleY =
+    30 * Math.PI / 180;
+
+const angleX =
+    20 * Math.PI / 180;
+
+
+
+// ======================================================
+// ПОВОРОТ ВОКРУГ Y
+// ======================================================
+//
+// [ x' ]   [ cosθ   0  -sinθ ] [ x ]
+// [ y' ] = [  0     1    0    ] [ y ]
+// [ z' ]   [ sinθ   0   cosθ ] [ z ]
+//
+// ======================================================
+
+function rotateY(point, angle) {
+
+    const [x, y, z] = point;
+
+    const cos =
+        Math.cos(angle);
+
+    const sin =
+        Math.sin(angle);
+
+
+    return [
+
+        x * cos - z * sin,
+
+        y,
+
+        x * sin + z * cos
+
+    ];
+}
+
+
+
+// ======================================================
+// ПОВОРОТ ВОКРУГ X
+// ======================================================
+
+function rotateX(point, angle) {
+
+    const [x, y, z] = point;
+
+    const cos =
+        Math.cos(angle);
+
+    const sin =
+        Math.sin(angle);
+
+
+    return [
+
+        x,
+
+        y * cos - z * sin,
+
+        y * sin + z * cos
+
+    ];
+}
+
+
+
+// ======================================================
+// ЛОКАЛЬНАЯ ТОЧКА → МИРОВАЯ ТОЧКА
+// ======================================================
+//
+// После поворота перемещаем куб
+// в его положение в мире.
+//
+// worldX = localX + cubeX
+// worldY = localY + cubeY
+// worldZ = localZ + cubeZ
+//
+// ======================================================
+
+function localToWorld(point) {
+
+    return [
+
+        point[0] + cubeX,
+
+        point[1] + cubeY,
+
+        point[2] + cubeZ
+
+    ];
+}
+
+
+
+// ======================================================
+// МИР → КООРДИНАТЫ КАМЕРЫ
+// ======================================================
+//
+// Самая важная часть.
+//
+// Если:
+//
+// точка мира:
+//
+// P = (5, 2, 12)
+//
+// камера:
+//
+// C = (2, 0, 4)
+//
+// то относительно камеры:
+//
+// x = 5 - 2 = 3
+//
+// y = 2 - 0 = 2
+//
+// z = 12 - 4 = 8
+//
+// ======================================================
+
+function worldToCamera(
+    point,
+    cameraX,
+    cameraY,
+    cameraZ
+) {
+
+    const [x, y, z] = point;
+
+
+    return [
+
+        x - cameraX,
+
+        y - cameraY,
+
+        z - cameraZ
+
+    ];
+}
+
+
+
+// ======================================================
+// ПЕРСПЕКТИВА
+// ======================================================
+//
+// Из подобия треугольников:
+//
+//
+//        xScreen       xCamera
+//        -------   =   -------
+//           f            zCamera
+//
+//
+// отсюда:
+//
+//
+// xScreen = f × xCamera / zCamera
+//
+//
+//
+// Аналогично:
+//
+// yScreen = f × yCamera / zCamera
+//
+// ======================================================
+
+function project(
+    point,
+    focalLength
+) {
+
+    const [x, y, z] = point;
+
+
+    // Точка позади камеры
+    // или слишком близко к ней
+
+    if (z <= 0.1) {
+
+        return null;
+
+    }
+
+
+    const projectedX =
+
+        focalLength
+        *
+        x
+        /
+        z;
+
+
+    const projectedY =
+
+        focalLength
+        *
+        y
+        /
+        z;
+
+
+    // Canvas имеет начало координат
+    // слева сверху.
+    //
+    // Поэтому переносим (0,0)
+    // в центр экрана.
+
+    const screenX =
+
+        canvas.width / 2
+        +
+        projectedX;
+
+
+    const screenY =
+
+        canvas.height / 2
+        -
+        projectedY;
+
+
+    return [
+
+        screenX,
+
+        screenY
+
+    ];
+}
+
+
+
+// ======================================================
+// ПОЛЗУНКИ
+// ======================================================
+
+const focalSlider =
+    document.getElementById("focalSlider");
+
+
+const cameraXSlider =
+    document.getElementById("cameraXSlider");
+
+
+const cameraYSlider =
+    document.getElementById("cameraYSlider");
+
+
+const cameraZSlider =
+    document.getElementById("cameraZSlider");
+
+
+
+// ======================================================
+// РИСОВАНИЕ
+// ======================================================
+
+function draw() {
+
+
+    ctx.clearRect(
+        0,
+        0,
+        canvas.width,
+        canvas.height
+    );
+
+
+
+    // ==================================================
+    // ЧИТАЕМ ПАРАМЕТРЫ КАМЕРЫ
+    // ==================================================
+
+    const focalLength =
+        Number(focalSlider.value);
+
+
+    const cameraX =
+        Number(cameraXSlider.value);
+
+
+    const cameraY =
+        Number(cameraYSlider.value);
+
+
+    const cameraZ =
+        Number(cameraZSlider.value);
+
+
+
+    // ==================================================
+    // ПОКАЗЫВАЕМ ЗНАЧЕНИЯ
+    // ==================================================
+
+    document
+        .getElementById("focalValue")
+        .textContent =
+        focalLength;
+
+
+    document
+        .getElementById("cameraXValue")
+        .textContent =
+        cameraX.toFixed(1);
+
+
+    document
+        .getElementById("cameraYValue")
+        .textContent =
+        cameraY.toFixed(1);
+
+
+    document
+        .getElementById("cameraZValue")
+        .textContent =
+        cameraZ.toFixed(1);
+
+
+
+    // ==================================================
+    // ШАГ 1
+    //
+    // ПОВОРАЧИВАЕМ ЛОКАЛЬНЫЕ ТОЧКИ КУБА
+    // ==================================================
+
+    const rotatedVertices =
+
+        localVertices.map(
+            point => {
+
+                let p =
+                    rotateY(
+                        point,
+                        angleY
+                    );
+
+
+                p =
+                    rotateX(
+                        p,
+                        angleX
+                    );
+
+
+                return p;
+            }
+        );
+
+
+
+    // ==================================================
+    // ШАГ 2
+    //
+    // ЛОКАЛЬНЫЕ → МИРОВЫЕ
+    // ==================================================
+
+    const worldVertices =
+
+        rotatedVertices.map(
+            point =>
+                localToWorld(point)
+        );
+
+
+
+    // ==================================================
+    // ШАГ 3
+    //
+    // МИРОВЫЕ → ОТНОСИТЕЛЬНО КАМЕРЫ
+    // ==================================================
+
+    const cameraVertices =
+
+        worldVertices.map(
+            point =>
+                worldToCamera(
+                    point,
+                    cameraX,
+                    cameraY,
+                    cameraZ
+                )
+        );
+
+
+
+    // ==================================================
+    // ШАГ 4
+    //
+    // 3D → 2D
+    // ==================================================
+
+    const screenVertices =
+
+        cameraVertices.map(
+            point =>
+                project(
+                    point,
+                    focalLength
+                )
+        );
+
+
+
+    // ==================================================
+    // РИСУЕМ РЁБРА
+    // ==================================================
+
+    ctx.strokeStyle =
+        "black";
+
+    ctx.lineWidth =
+        2;
+
+
+    for (
+        const [aIndex, bIndex]
+        of edges
+    ) {
+
+        const a =
+            screenVertices[aIndex];
+
+        const b =
+            screenVertices[bIndex];
+
+
+        if (!a || !b) {
+
+            continue;
+
+        }
+
+
+        ctx.beginPath();
+
+
+        ctx.moveTo(
+            a[0],
+            a[1]
+        );
+
+
+        ctx.lineTo(
+            b[0],
+            b[1]
+        );
+
+
+        ctx.stroke();
+    }
+
+
+
+    // ==================================================
+    // ТОЧКИ
+    // ==================================================
+
+    screenVertices.forEach(
+        (point, index) => {
+
+
+            if (!point) {
+
+                return;
+
+            }
+
+
+            ctx.beginPath();
+
+
+            ctx.arc(
+                point[0],
+                point[1],
+                5,
+                0,
+                Math.PI * 2
+            );
+
+
+            ctx.fillStyle =
+                "red";
+
+
+            ctx.fill();
+
+
+
+            ctx.fillStyle =
+                "blue";
+
+
+            ctx.font =
+                "16px Arial";
+
+
+            ctx.fillText(
+                index,
+                point[0] + 8,
+                point[1] - 8
+            );
+
+        }
+    );
+
+
+
+    // ==================================================
+    // ПОКАЗЫВАЕМ РАСЧЁТ
+    //
+    // Для вершины №1
+    // ==================================================
+
+    const index = 1;
+
+
+    const worldPoint =
+        worldVertices[index];
+
+
+    const cameraPoint =
+        cameraVertices[index];
+
+
+    const worldX =
+        worldPoint[0];
+
+    const worldY =
+        worldPoint[1];
+
+    const worldZ =
+        worldPoint[2];
+
+
+    const cameraPointX =
+        cameraPoint[0];
+
+    const cameraPointY =
+        cameraPoint[1];
+
+    const cameraPointZ =
+        cameraPoint[2];
+
+
+
+    const projectedX =
+
+        focalLength
+        *
+        cameraPointX
+        /
+        cameraPointZ;
+
+
+    const projectedY =
+
+        focalLength
+        *
+        cameraPointY
+        /
+        cameraPointZ;
+
+
+
+    document
+        .getElementById("info")
+        .textContent =
+
+`Вершина №1
+
+1. Координаты в мире:
+
+P = (
+    ${worldX.toFixed(2)},
+    ${worldY.toFixed(2)},
+    ${worldZ.toFixed(2)}
+)
+
+
+2. Камера:
+
+C = (
+    ${cameraX.toFixed(2)},
+    ${cameraY.toFixed(2)},
+    ${cameraZ.toFixed(2)}
+)
+
+
+3. Координаты точки относительно камеры:
+
+xCamera = xWorld - cameraX
+
+${worldX.toFixed(2)} - ${cameraX.toFixed(2)}
+=
+${cameraPointX.toFixed(2)}
+
+
+yCamera = yWorld - cameraY
+
+${worldY.toFixed(2)} - ${cameraY.toFixed(2)}
+=
+${cameraPointY.toFixed(2)}
+
+
+zCamera = zWorld - cameraZ
+
+${worldZ.toFixed(2)} - ${cameraZ.toFixed(2)}
+=
+${cameraPointZ.toFixed(2)}
+
+
+
+4. Перспектива:
+
+xScreen = f × xCamera / zCamera
+
+${focalLength} × ${cameraPointX.toFixed(2)} / ${cameraPointZ.toFixed(2)}
+=
+${projectedX.toFixed(2)}
+
+
+yScreen = f × yCamera / zCamera
+
+${focalLength} × ${cameraPointY.toFixed(2)} / ${cameraPointZ.toFixed(2)}
+=
+${projectedY.toFixed(2)}
+`;
+
+}
+
+
+
+// ======================================================
+// СОБЫТИЯ
+// ======================================================
+
+focalSlider.addEventListener(
+    "input",
+    draw
+);
+
+
+cameraXSlider.addEventListener(
+    "input",
+    draw
+);
+
+
+cameraYSlider.addEventListener(
+    "input",
+    draw
+);
+
+
+cameraZSlider.addEventListener(
+    "input",
+    draw
+);
+
+
+
+// ======================================================
+// ПЕРВОЕ РИСОВАНИЕ
+// ======================================================
+
+draw();
+
+
+</script>
+
+
+</body>
+</html>
