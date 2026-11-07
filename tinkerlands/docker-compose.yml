@@ -1,0 +1,46 @@
+# Tinkerlands behind Caddy, which obtains HTTPS certificates automatically.
+#   cp .env.example .env    # then set DOMAIN, ADMIN_TOKEN and METRICS_TOKEN
+#   docker compose up -d --build
+
+services:
+  game:
+    build: .
+    restart: unless-stopped
+    environment:
+      TRUST_PROXY: 'true'
+      ADMIN_TOKEN: ${ADMIN_TOKEN:?Set ADMIN_TOKEN in .env}
+      METRICS_TOKEN: ${METRICS_TOKEN:?Set METRICS_TOKEN in .env}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      BLOCKED_WORDS: ${BLOCKED_WORDS:-}
+    volumes:
+      - game-data:/data
+    # Long enough for the server to save every world when it's asked to stop.
+    stop_grace_period: 20s
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      game:
+        condition: service_healthy
+    ports:
+      - '80:80'
+      - '443:443'
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  game-data:
+  caddy-data:
+  caddy-config:

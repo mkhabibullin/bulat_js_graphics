@@ -1,0 +1,38 @@
+# Runs when tinkerlands/ is the root of its own repository. If it stays inside a
+# larger repository, GitHub only reads workflows from the top-level .github
+# folder, so move this file there and add `working-directory: tinkerlands`.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - name: Browser test
+        run: npm run test:e2e
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+      - name: Keep screenshots if the browser test fails
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: e2e/screenshots
+
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t tinkerlands .

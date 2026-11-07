@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>3D Collisions with Bubbles</title>
+    <style>
+        body {
+            max-width: 800px;
+            margin: 24px auto;
+            padding: 0 16px;
+            font-family: system-ui, sans-serif;
+            color: #1f2937;
+            background: white;
+        }
+
+        h2 {
+            margin-bottom: 6px;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: auto;
+            border: 1px solid #cbd5e1;
+            background: #f8fafc;
+            cursor: grab;
+            touch-action: none;
+        }
+
+        .rule {
+            padding: 10px 14px;
+            margin: 12px 0;
+            background: #fef9c3;
+            border-left: 5px solid #facc15;
+            font-size: 18px;
+        }
+
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 12px;
+            margin: 14px 0;
+        }
+
+        button, select {
+            padding: 7px 11px;
+            font: inherit;
+        }
+
+        #values {
+            font-family: ui-monospace, monospace;
+            line-height: 1.8;
+            white-space: pre-line;
+        }
+
+        .note {
+            color: #475569;
+            font-size: 15px;
+        }
+
+        code {
+            font-family: ui-monospace, monospace;
+        }
+    </style>
+</head>
+<body>
+    <h2>Collisions: how do 3D objects know they touched?</h2>
+
+    <div class="rule">
+        <b>The one rule:</b> two bubbles touch when
+        <code>distance &lt; radius1 + radius2</code>
+    </div>
+
+    <p id="levelText"></p>
+
+    <canvas id="canvas" width="800" height="600"></canvas>
+
+    <div class="controls">
+        <select id="level">
+            <option value="0">Level 1: two balls</option>
+            <option value="1">Level 2: balls and cubes</option>
+            <option value="2">Level 3: complex objects</option>
+        </select>
+        <button id="play">Pause</button>
+        <button id="step">Step</button>
+        <button id="reset">Reset</button>
+        <label><input id="showBubbles" type="checkbox" checked> Show bubbles</label>
+        <label><input id="stopOnHit" type="checkbox"> Stop at every hit</label>
+    </div>
+
+    <div id="values"></div>
+
+    <p class="note">
+        Drag the picture to turn the camera. The dashed line joins the two closest bubbles.
+    </p>
+
+    <h3>Try it yourself</h3>
+    <p class="note">
+        Open this file in an editor and change it:<br>
+        1. Make your own object: add a new list of bubbles to <code>shapes</code>, then put it in a level.<br>
+        2. In Level 1 the balls meet exactly head-on. Change the red ball's <code>velocity</code> to <code>[110, 3, 0]</code>: what does a tiny push do?<br>
+        3. Harder: give every object a weight, so a snowman pushes a small ball further.
+    </p>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const values = document.getElementById('values');
+        const playButton = document.getElementById('play');
+        const showBubbles = document.getElementById('showBubbles');
+        const stopOnHit = document.getElementById('stopOnHit');
+
+        // =====================================================
+        // 1. SHAPES: every object is just a list of bubbles.
+        //
+        // at     = where the bubble sits inside the object [x, y, z]
+        // radius = how big the bubble is
+        //
+        // Objects with cubeSize also draw a cube around the bubbles.
+        // =====================================================
+
+        const shapes = {
+            ball: {
+                bubbles: [
+                    { at: [0, 0, 0], radius: 50 }
+                ]
+            },
+
+            // One big bubble: simple, but the corners poke out.
+            cube: {
+                cubeSize: 45,
+                bubbles: [
+                    { at: [0, 0, 0], radius: 62 }
+                ]
+            },
+
+            // Nine bubbles: more work, but it fits the cube better.
+            bumpyCube: {
+                cubeSize: 45,
+                bubbles: [
+                    { at: [  0,   0,   0], radius: 35 },
+                    { at: [-25, -25, -25], radius: 20 },
+                    { at: [ 25, -25, -25], radius: 20 },
+                    { at: [ 25,  25, -25], radius: 20 },
+                    { at: [-25,  25, -25], radius: 20 },
+                    { at: [-25, -25,  25], radius: 20 },
+                    { at: [ 25, -25,  25], radius: 20 },
+                    { at: [ 25,  25,  25], radius: 20 },
+                    { at: [-25,  25,  25], radius: 20 }
+                ]
+            },
+
+            dumbbell: {
+                bubbles: [
+                    { at: [-55, 0, 0], radius: 32 },
+                    { at: [  0, 0, 0], radius: 15 },
+                    { at: [ 55, 0, 0], radius: 32 }
+                ]
+            },
+
+            snowman: {
+                bubbles: [
+                    { at: [0, -40, 0], radius: 38 },
+                    { at: [0,  10, 0], radius: 28 },
+                    { at: [0,  48, 0], radius: 19 }
+                ]
+            }
+        };
+
+        // =====================================================
+        // 2. LEVELS: what is in the room, and how it moves.
+        //
+        // position = where the object starts
+        // velocity = how many pixels it moves each second
+        // spin     = how fast it turns [around X, around Y]
+        // =====================================================
+
+        const levels = [
+            {
+                text: 'Each ball is one bubble. Tick "Stop at every hit" and read the numbers below the picture.',
+                objects: [
+                    { shape: 'ball', color: '#ef4444', position: [-170, 0, 0], velocity: [ 110, 0, 0], spin: [0, 0] },
+                    { shape: 'ball', color: '#3b82f6', position: [ 170, 0, 0], velocity: [-110, 0, 0], spin: [0, 0] }
+                ]
+            },
+            {
+                text: 'A cube is hard to check, so we hide it in one bubble. Turn off "Show bubbles": the corners sometimes overlap, or objects bounce a little early.',
+                objects: [
+                    { shape: 'ball', color: '#ef4444', position: [-170,  120,  -80], velocity: [ 120, -40,  50], spin: [0, 0] },
+                    { shape: 'ball', color: '#3b82f6', position: [ 170, -120,   80], velocity: [-100,  60, -30], spin: [0, 0] },
+                    { shape: 'ball', color: '#22c55e', position: [ 150,  130, -120], velocity: [ -70, -90,  60], spin: [0, 0] },
+                    { shape: 'cube', color: '#8b5cf6', position: [   0,    0,    0], velocity: [  50,  70, -80], spin: [0.8, 1.2] },
+                    { shape: 'cube', color: '#f97316', position: [-150, -130,  120], velocity: [  90,  50, -60], spin: [1.1, 0.6] }
+                ]
+            },
+            {
+                text: 'Same rule, more bubbles! Matrices tell us where each bubble is while the object spins. Then we check every bubble of one object against every bubble of another.',
+                objects: [
+                    { shape: 'dumbbell',  color: '#8b5cf6', position: [-130,  120,    0], velocity: [ 90, -50,  40], spin: [0.9, 1.3] },
+                    { shape: 'snowman',   color: '#06b6d4', position: [ 150,  100, -100], velocity: [-80, -60,  50], spin: [0.5, 1.0] },
+                    { shape: 'bumpyCube', color: '#f97316', position: [ 120, -130,  100], velocity: [-70,  90, -40], spin: [1.0, 0.7] },
+                    { shape: 'ball',      color: '#ef4444', position: [-140, -130, -100], velocity: [100,  70,  60], spin: [0, 0] }
+                ]
+            }
+        ];
+
+        // Half the width of the room. Walls are at -roomSize and +roomSize.
+        const roomSize = 250;
+
+        // The same 8 corners and 12 edges as Canvas 3, for the cubes and the room.
+        const corners = [
+            [-1, -1, -1], [ 1, -1, -1], [ 1,  1, -1], [-1,  1, -1],
+            [-1, -1,  1], [ 1, -1,  1], [ 1,  1,  1], [-1,  1,  1]
+        ];
+
+        const edges = [
+            [0,1], [1,2], [2,3], [3,0],
+            [4,5], [5,6], [6,7], [7,4],
+            [0,4], [1,5], [2,6], [3,7]
+        ];
+
+        let levelIndex = 0;
+        let objects = [];
+        let running = true;
+        let lastTime = null;
+        let hits = 0;
+        let lastHit = null;
+
+        // The camera. Drag the picture to change these angles.
+        let viewAngleX = -0.3;
+        let viewAngleY = -0.5;
+        const cameraDistance = 1000;
+        const focalLength = 600;
+
+        // =====================================================
+        // 3. MATRICES: the same ones as in Canvas 4.
+        // =====================================================
+
+        function rotationX(angle) {
+            const cos = Math.cos(angle);
+            const sin = Math.sin(angle);
+
+            return [
+                [1, 0,    0   ],
+                [0, cos, -sin ],
+                [0, sin,  cos ]
+            ];
+        }
+
+        function rotationY(angle) {
+            const cos = Math.cos(angle);
+            const sin = Math.sin(angle);
+
+            return [
+                [ cos, 0, sin],
+                [ 0,   1, 0  ],
+                [-sin, 0, cos]
+            ];
+        }
+
+        function multiplyMatrices(A, B) {
+            const result = [
+                [0, 0, 0],
+                [0, 0, 0],
+                [0, 0, 0]
+            ];
+
+            for (let row = 0; row < 3; row++) {
+                for (let col = 0; col < 3; col++) {
+                    for (let k = 0; k < 3; k++) {
+                        result[row][col] += A[row][k] * B[k][col];
+                    }
+                }
+            }
+
+            return result;
+        }
+
+        function transformPoint3D(point, matrix) {
+            const [x, y, z] = point;
+
+            return [
+                x * matrix[0][0] + y * matrix[0][1] + z * matrix[0][2],
+                x * matrix[1][0] + y * matrix[1][1] + z * matrix[1][2],
+                x * matrix[2][0] + y * matrix[2][1] + z * matrix[2][2]
+            ];
+        }
+
+        // Inside the object -> in the room: first turn, then move.
+        function toWorld(object, point) {
+            const turned = transformPoint3D(point, object.matrix);
+
+            return [
+                turned[0] + object.position[0],
+                turned[1] + object.position[1],
+                turned[2] + object.position[2]
+            ];
+        }
+
+        function updateBubbleCenters(object) {
+            for (const bubble of object.bubbles) {
+                bubble.center = toWorld(object, bubble.at);
+            }
+        }
+
+        // =====================================================
+        // 4. COLLISIONS: this is the heart of the program.
+        // =====================================================
+
+        // Pythagoras in 3D.
+        function distance3D(A, B) {
+            const dx = B[0] - A[0];
+            const dy = B[1] - A[1];
+            const dz = B[2] - A[2];
+
+            return Math.sqrt(dx * dx + dy * dy + dz * dz);
+        }
+
+        // Check every bubble of A against every bubble of B.
+        // Keep the pair with the smallest gap between them.
+        function findClosestBubbles(objectA, objectB) {
+            let closest = null;
+
+            for (const bubbleA of objectA.bubbles) {
+                for (const bubbleB of objectB.bubbles) {
+                    const distance = distance3D(bubbleA.center, bubbleB.center);
+                    const touchAt = bubbleA.radius + bubbleB.radius;
+                    const gap = distance - touchAt;
+
+                    if (closest === null || gap < closest.gap) {
+                        closest = { bubbleA, bubbleB, objectA, objectB, distance, touchAt, gap };
+                    }
+                }
+            }
+
+            return closest;
+        }
+
+        function bounce(pair) {
+            const { objectA, objectB, bubbleA, bubbleB, distance, touchAt } = pair;
+
+            // A direction arrow of length 1, pointing from A to B.
+            const safeDistance = distance || 1;
+            const arrow = [
+                (bubbleB.center[0] - bubbleA.center[0]) / safeDistance,
+                (bubbleB.center[1] - bubbleA.center[1]) / safeDistance,
+                (bubbleB.center[2] - bubbleA.center[2]) / safeDistance
+            ];
+
+            // How fast are they coming closer along the arrow?
+            let closingSpeed = 0;
+            for (let i = 0; i < 3; i++) {
+                closingSpeed += (objectA.velocity[i] - objectB.velocity[i]) * arrow[i];
+            }
+
+            // Bounce only if they are coming closer. Equal weights swap this speed.
+            if (closingSpeed > 0) {
+                for (let i = 0; i < 3; i++) {
+                    objectA.velocity[i] -= closingSpeed * arrow[i];
+                    objectB.velocity[i] += closingSpeed * arrow[i];
+                }
+
+                bubbleA.flash = 0.3;
+                bubbleB.flash = 0.3;
+                hits++;
+                lastHit = pair;
+
+                if (stopOnHit.checked) {
+                    setRunning(false);
+                }
+            }
+
+            // Push them apart, half each, so they no longer overlap.
+            const overlap = touchAt - distance;
+            for (let i = 0; i < 3; i++) {
+                objectA.position[i] -= arrow[i] * overlap / 2;
+                objectB.position[i] += arrow[i] * overlap / 2;
+            }
+
+            updateBubbleCenters(objectA);
+            updateBubbleCenters(objectB);
+        }
+
+        // A wall is simple: compare each bubble with the room size.
+        function bounceOffWalls(object) {
+            for (const bubble of object.bubbles) {
+                for (let i = 0; i < 3; i++) {
+                    const limit = roomSize - bubble.radius;
+
+                    if (bubble.center[i] > limit) {
+                        object.position[i] -= bubble.center[i] - limit;
+                        object.velocity[i] = -Math.abs(object.velocity[i]);
+                        updateBubbleCenters(object);
+                    }
+
+                    if (bubble.center[i] < -limit) {
+                        object.position[i] += -limit - bubble.center[i];
+                        object.velocity[i] = Math.abs(object.velocity[i]);
+                        updateBubbleCenters(object);
+                    }
+                }
+            }
+        }
+
+        // =====================================================
+        // 5. EVERY MOMENT: move, spin, then look for collisions.
+        // =====================================================
+
+        function update(dt) {
+            for (const object of objects) {
+                for (let i = 0; i < 3; i++) {
+                    object.position[i] += object.velocity[i] * dt;
+                }
+
+                object.angleX += object.spin[0] * dt;
+                object.angleY += object.spin[1] * dt;
+                object.matrix = multiplyMatrices(
+                    rotationY(object.angleY),
+                    rotationX(object.angleX)
+                );
+
+                updateBubbleCenters(object);
+
+                for (const bubble of object.bubbles) {
+                    bubble.flash = Math.max(0, bubble.flash - dt);
+                }
+            }
+
+            // Compare each object with each other object, once per pair.
+            for (let a = 0; a < objects.length; a++) {
+                for (let b = a + 1; b < objects.length; b++) {
+                    const pair = findClosestBubbles(objects[a], objects[b]);
+
+                    if (pair.distance < pair.touchAt) {
+                        bounce(pair);
+                    }
+                }
+            }
+
+            for (const object of objects) {
+                bounceOffWalls(object);
+            }
+        }
+
+        // =====================================================
+        // 6. DRAWING
+        // =====================================================
+
+        // Perspective, like Canvas 4.2: screenX = f * x / z
+        function project(point) {
+            const viewMatrix = multiplyMatrices(
+                rotationX(viewAngleX),
+                rotationY(viewAngleY)
+            );
+            const [x, y, z] = transformPoint3D(point, viewMatrix);
+            const depth = z + cameraDistance;
+            const scale = focalLength / depth;
+
+            return {
+                x: canvas.width / 2 + x * scale,
+                y: canvas.height / 2 - y * scale,
+                depth,
+                scale
+            };
+        }
+
+        function drawLine(A, B, color, width) {
+            ctx.strokeStyle = color;
+            ctx.lineWidth = width;
+            ctx.beginPath();
+            ctx.moveTo(A.x, A.y);
+            ctx.lineTo(B.x, B.y);
+            ctx.stroke();
+        }
+
+        function drawBall(point, radius, color) {
+            const r = radius * point.scale;
+
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.arc(point.x, point.y, r, 0, Math.PI * 2);
+            ctx.fill();
+
+            // A small white shine makes the circle look round.
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+            ctx.beginPath();
+            ctx.arc(point.x - r * 0.35, point.y - r * 0.35, r * 0.18, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // A see-through bubble, used around the cubes.
+        function drawBubble(point, radius, color) {
+            ctx.globalAlpha = 0.25;
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.arc(point.x, point.y, radius * point.scale, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalAlpha = 1;
+        }
+
+        // A yellow ring shows which bubble was just hit.
+        function drawHitRing(point, radius) {
+            ctx.strokeStyle = '#facc15';
+            ctx.lineWidth = 6;
+            ctx.beginPath();
+            ctx.arc(point.x, point.y, radius * point.scale, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+
+        function drawCenterDot(point) {
+            ctx.fillStyle = '#1f2937';
+            ctx.beginPath();
+            ctx.arc(point.x, point.y, 3, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        function drawRoom() {
+            const points = corners.map(corner => project([
+                corner[0] * roomSize,
+                corner[1] * roomSize,
+                corner[2] * roomSize
+            ]));
+
+            for (const [i, j] of edges) {
+                drawLine(points[i], points[j], '#94a3b8', 1);
+            }
+        }
+
+        // Things far from the camera must be painted first, so we
+        // collect everything, sort by depth, and only then paint it.
+        function collectThingsToPaint(object) {
+            const things = [];
+            const flashing = object.bubbles.some(bubble => bubble.flash > 0);
+            const hitColor = '#facc15';
+
+            if (object.cubeSize) {
+                const points = corners.map(corner => project(toWorld(object, [
+                    corner[0] * object.cubeSize,
+                    corner[1] * object.cubeSize,
+                    corner[2] * object.cubeSize
+                ])));
+
+                for (const [i, j] of edges) {
+                    things.push({
+                        depth: (points[i].depth + points[j].depth) / 2,
+                        paint: () => drawLine(points[i], points[j], flashing ? hitColor : object.color, 3)
+                    });
+                }
+            }
+
+            for (const bubble of object.bubbles) {
+                const point = project(bubble.center);
+
+                things.push({
+                    depth: point.depth,
+                    paint: () => {
+                        if (!object.cubeSize) {
+                            drawBall(point, bubble.radius, object.color);
+                        } else if (showBubbles.checked) {
+                            drawBubble(point, bubble.radius, object.color);
+                        }
+
+                        if (bubble.flash > 0 && (!object.cubeSize || showBubbles.checked)) {
+                            drawHitRing(point, bubble.radius);
+                        }
+
+                        if (showBubbles.checked) {
+                            drawCenterDot(point);
+                        }
+                    }
+                });
+            }
+
+            return things;
+        }
+
+        function findClosestPairInRoom() {
+            let closest = null;
+
+            for (let a = 0; a < objects.length; a++) {
+                for (let b = a + 1; b < objects.length; b++) {
+                    const pair = findClosestBubbles(objects[a], objects[b]);
+
+                    if (closest === null || pair.gap < closest.gap) {
+                        closest = pair;
+                    }
+                }
+            }
+
+            return closest;
+        }
+
+        function drawClosestLine(pair) {
+            const A = project(pair.bubbleA.center);
+            const B = project(pair.bubbleB.center);
+
+            ctx.setLineDash([6, 6]);
+            drawLine(A, B, '#1f2937', 2);
+            ctx.setLineDash([]);
+
+            // Dark numbers with a white edge can be read on top of anything.
+            const label = pair.distance.toFixed(0);
+            const labelX = (A.x + B.x) / 2 + 6;
+            const labelY = (A.y + B.y) / 2 - 6;
+
+            ctx.font = 'bold 15px system-ui, sans-serif';
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = 4;
+            ctx.strokeText(label, labelX, labelY);
+            ctx.fillStyle = '#1f2937';
+            ctx.fillText(label, labelX, labelY);
+        }
+
+        function showNumbers(pair) {
+            const touching = pair.gap < 0.5;
+            let text =
+                `Closest: ${pair.objectA.shape} and ${pair.objectB.shape}\n` +
+                `distance = ${pair.distance.toFixed(1)}, ` +
+                `radius1 + radius2 = ${pair.touchAt.toFixed(1)}: ` +
+                (touching ? 'TOUCHING' : 'not touching') + '\n' +
+                `Hits: ${hits}`;
+
+            if (lastHit) {
+                text +=
+                    `. Last hit: ${lastHit.distance.toFixed(1)} < ` +
+                    `${lastHit.touchAt.toFixed(1)}, so they bounce!`;
+            }
+
+            values.textContent = text;
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            drawRoom();
+
+            const things = objects.flatMap(collectThingsToPaint);
+            things.sort((A, B) => B.depth - A.depth);
+
+            for (const thing of things) {
+                thing.paint();
+            }
+
+            const pair = findClosestPairInRoom();
+            drawClosestLine(pair);
+            showNumbers(pair);
+        }
+
+        // =====================================================
+        // 7. STARTING A LEVEL, BUTTONS AND MOUSE
+        // =====================================================
+
+        function makeObject(plan) {
+            const shape = shapes[plan.shape];
+
+            const object = {
+                shape: plan.shape,
+                color: plan.color,
+                cubeSize: shape.cubeSize,
+                position: [...plan.position],
+                velocity: [...plan.velocity],
+                spin: plan.spin,
+                angleX: 0,
+                angleY: 0,
+                matrix: multiplyMatrices(rotationY(0), rotationX(0)),
+                bubbles: shape.bubbles.map(bubble => ({
+                    at: bubble.at,
+                    radius: bubble.radius,
+                    center: [0, 0, 0],
+                    flash: 0
+                }))
+            };
+
+            updateBubbleCenters(object);
+            return object;
+        }
+
+        function loadLevel(index) {
+            levelIndex = index;
+            objects = levels[index].objects.map(makeObject);
+            hits = 0;
+            lastHit = null;
+            lastTime = null;
+            document.getElementById('levelText').textContent = levels[index].text;
+            draw();
+        }
+
+        function setRunning(value) {
+            running = value;
+            playButton.textContent = running ? 'Pause' : 'Play';
+        }
+
+        function animate(time) {
+            if (running) {
+                if (lastTime !== null) {
+                    const dt = Math.min((time - lastTime) / 1000, 0.04);
+                    update(dt);
+                }
+                lastTime = time;
+            } else {
+                lastTime = null;
+            }
+
+            draw();
+            requestAnimationFrame(animate);
+        }
+
+        playButton.addEventListener('click', function () {
+            setRunning(!running);
+        });
+
+        document.getElementById('step').addEventListener('click', function () {
+            setRunning(false);
+            update(1 / 30);
+            draw();
+        });
+
+        document.getElementById('reset').addEventListener('click', function () {
+            loadLevel(levelIndex);
+        });
+
+        document.getElementById('level').addEventListener('change', function (event) {
+            loadLevel(Number(event.target.value));
+        });
+
+        canvas.addEventListener('pointerdown', function (event) {
+            canvas.setPointerCapture(event.pointerId);
+        });
+
+        canvas.addEventListener('pointermove', function (event) {
+            if (canvas.hasPointerCapture(event.pointerId)) {
+                viewAngleY -= event.movementX * 0.01;
+                viewAngleX -= event.movementY * 0.01;
+            }
+        });
+
+        loadLevel(0);
+        requestAnimationFrame(animate);
+    </script>
+</body>
+</html>

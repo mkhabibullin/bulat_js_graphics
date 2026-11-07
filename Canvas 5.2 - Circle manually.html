@@ -1,0 +1,35 @@
+<canvas id="canvas" width="500" height="500"
+        style="border:1px solid black"></canvas>
+
+<script>
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+const cx = 250;
+const cy = 250;
+const radius = 120;
+
+const segments = 150;
+
+ctx.beginPath();
+
+for (let i = 0; i <= segments; i++) {
+
+    const angle =
+        i / segments * Math.PI * 2;
+
+    const x =
+        cx + radius * Math.cos(angle);
+
+    const y =
+        cy + radius * Math.sin(angle);
+
+    if (i === 0) {
+        ctx.moveTo(x, y);
+    } else {
+        ctx.lineTo(x, y);
+    }
+}
+
+ctx.stroke();
+</script>
