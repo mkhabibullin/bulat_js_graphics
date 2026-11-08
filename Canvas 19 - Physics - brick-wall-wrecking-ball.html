@@ -1,0 +1,1292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Brick Wall Demolition</title>
+    <style>
+        body {
+            max-width: 800px;
+            margin: 24px auto;
+            padding: 0 16px;
+            font-family: system-ui, sans-serif;
+            color: #1f2937;
+            background: white;
+        }
+
+        h2 {
+            margin-bottom: 6px;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: auto;
+            border: 1px solid #cbd5e1;
+            background: #e0f2fe;
+            cursor: grab;
+            touch-action: none;
+        }
+
+        .rule {
+            padding: 10px 14px;
+            margin: 12px 0;
+            background: #fef9c3;
+            border-left: 5px solid #facc15;
+            font-size: 17px;
+            line-height: 1.6;
+        }
+
+        #message {
+            min-height: 1.5em;
+            font-size: 17px;
+        }
+
+        .sliders {
+            display: grid;
+            grid-template-columns: auto 1fr 5.5em;
+            align-items: center;
+            gap: 6px 12px;
+            margin: 14px 0;
+        }
+
+        .sliders input {
+            width: 100%;
+            margin: 0;
+        }
+
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 12px;
+            margin: 14px 0;
+        }
+
+        button, select {
+            padding: 7px 11px;
+            font: inherit;
+        }
+
+        #letGo {
+            font-weight: bold;
+        }
+
+        pre {
+            margin: 0;
+            padding: 8px 10px;
+            background: #f1f5f9;
+            font-family: ui-monospace, monospace;
+            font-size: 15px;
+            line-height: 1.5;
+            overflow-x: auto;
+        }
+
+        .where {
+            color: #c2410c;
+            font-weight: bold;
+        }
+
+        .note {
+            color: #475569;
+            font-size: 15px;
+        }
+
+        code {
+            font-family: ui-monospace, monospace;
+            overflow-wrap: anywhere;
+        }
+    </style>
+</head>
+<body>
+    <h2>Knock down a wall with just two rules</h2>
+
+    <div class="rule">
+        Every brick is a solid box with a matrix: which way it is turned, and where its middle is.
+        The whole program follows two rules:<br>
+        <b>Rule 1:</b> no corner of a brick may be inside another brick.<br>
+        <b>Rule 2:</b> a push that does not go through a brick's middle also turns it
+        (push a book near its edge and it spins).
+    </div>
+
+    <canvas id="canvas" width="800" height="600"></canvas>
+
+    <p id="message"></p>
+
+    <div class="sliders">
+        <label for="swing">Swing height</label>
+        <input id="swing" type="range" min="20" max="85" value="60">
+        <span id="swingValue"></span>
+
+        <label for="weight">Ball weight</label>
+        <input id="weight" type="range" min="2" max="30" value="10">
+        <span id="weightValue"></span>
+    </div>
+
+    <div class="controls">
+        <button id="letGo">Let go!</button>
+        <button id="reset">Reset</button>
+        <label>Mortar
+            <select id="mortar">
+                <option value="none">none</option>
+                <option value="weak" selected>weak</option>
+                <option value="strong">strong</option>
+            </select>
+        </label>
+        <label><input id="skeleton" type="checkbox"> Show skeleton</label>
+        <label><input id="slowMotion" type="checkbox"> Slow motion</label>
+    </div>
+
+    <h3>The yellow brick's matrix</h3>
+    <pre id="matrixNumbers"></pre>
+    <p class="note">
+        Each column is the direction of one side of the brick, and the
+        <span class="where">orange column</span> is the middle of the brick.
+        The picture draws every brick with its matrix, like the cubes before.
+        Drag the picture to look around.
+    </p>
+
+    <h3>How does Rule 1 work?</h3>
+    <p class="note">
+        Is a corner inside a turned brick? That is hard to see. So we look at the corner
+        from the brick's own point of view: we undo the brick's matrix. For a turn, undoing
+        is easy: the columns become rows. Now the brick is a simple box around (0, 0, 0),
+        and the corner is inside if <code>|x|</code>, <code>|y|</code> and <code>|z|</code>
+        are all smaller than half the brick's size. If it is inside, we push the bricks apart.
+        Turn on "Show skeleton" to see the corners and each brick's three matrix directions.
+    </p>
+
+    <h3>What does the mortar do?</h3>
+    <p class="note">
+        Every brick sleeps (stays perfectly still) until it comes loose. A brick comes loose when:<br>
+        1. something hits it hard enough. Mortar holds it, so with mortar the hit must be harder;<br>
+        2. the bricks holding it up move away. Without mortar it falls if <b>any</b> brick under it moves;
+        with weak mortar only if <b>all</b> of them move; strong mortar keeps it in place, even over a hole.<br>
+        "Show skeleton" draws white lines from each sleeping brick to the bricks holding it up.
+    </p>
+
+    <h3>Try it yourself</h3>
+    <p class="note">
+        Open this file in an editor and find <code>wall</code> and <code>wallPlan</code>:<br>
+        1. Build a taller wall: change <code>rows: 7</code> to <code>rows: 10</code>.<br>
+        2. Build a pyramid: change the line that starts with <code>const pieces</code> to
+        <code>const pieces = Array(wall.bricksPerRow - row).fill(1);</code><br>
+        3. Build a crossed tower. Replace the whole <code>for</code> loop in <code>wallPlan</code> with:<br>
+        <code>for (let row = 0; row &lt; 10; row++) { const turn = row % 2 === 0 ? 0 : 90; for (const side of [-16, 16]) { plan.push(turn === 0 ? { x: 0, y: 16 + row * 32, z: side, turn, size: 1 } : { x: side, y: 16 + row * 32, z: 0, turn, size: 1 }); } }</code><br>
+        The <code>turn</code> uses a rotation matrix to place each brick.<br>
+        4. Harder: change <code>brickMass</code> to make the bricks heavier or lighter, and see how far they fly.
+    </p>
+
+    <p class="note">
+        Real bricks have rough edges and real mortar is uneven, so a real wall breaks a little less neatly.
+        Try "Slow motion" to watch each brick tumble.
+    </p>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const message = document.getElementById('message');
+        const letGoButton = document.getElementById('letGo');
+        const skeleton = document.getElementById('skeleton');
+        const slowMotion = document.getElementById('slowMotion');
+
+        // =====================================================
+        // 1. SETTINGS
+        // =====================================================
+
+        const wall = { rows: 7, bricksPerRow: 8 };
+
+        const brickLength = 64;
+        const brickHeight = 32;
+        const brickDepth = 32;
+        const brickMass = 1;
+
+        const gravity = 2400;               // how fast things speed up when falling
+        const stepsPerFrame = 12;           // small steps make the physics steadier
+        const stickyFriction = 0.6;         // grip before something starts sliding
+        const slidingFriction = 0.45;       // grip while it slides
+        const bounciness = 0.1;             // bricks hardly bounce
+        const cornerInset = 0.6;            // check points sit this far inside the corners
+        const allowedOverlap = 0.2;         // a tiny overlap keeps resting bricks steady
+        const settleSpeed = 15;             // slower than this while touching: wobbles fade
+
+        // A sleeping brick only comes loose when something hits it faster than this.
+        // Mortar holds bricks in place, so with mortar the hit must be harder.
+        const knockLooseSpeed = { none: 200, weak: 450, strong: 800 };
+
+        const sleepSpeed = 6;
+        const sleepAfter = 0.8;             // seconds of being still
+
+        const ropeLength = 380;
+        const wreckingBallRadius = 40;
+        const pivot = [0, 110 + ropeLength, -(brickDepth / 2 + wreckingBallRadius + 1)];
+
+        // =====================================================
+        // 2. VECTORS AND MATRICES
+        // =====================================================
+
+        function add(A, B) { return [A[0] + B[0], A[1] + B[1], A[2] + B[2]]; }
+        function subtract(A, B) { return [A[0] - B[0], A[1] - B[1], A[2] - B[2]]; }
+        function scale(A, s) { return [A[0] * s, A[1] * s, A[2] * s]; }
+        function dot(A, B) { return A[0] * B[0] + A[1] * B[1] + A[2] * B[2]; }
+        function length(A) { return Math.hypot(A[0], A[1], A[2]); }
+        function normalize(A) { return scale(A, 1 / length(A)); }
+        function distance3D(A, B) { return length(subtract(A, B)); }
+        function clamp(value, low, high) { return Math.max(low, Math.min(high, value)); }
+
+        // An arrow standing square to both A and B.
+        function cross(A, B) {
+            return [
+                A[1] * B[2] - A[2] * B[1],
+                A[2] * B[0] - A[0] * B[2],
+                A[0] * B[1] - A[1] * B[0]
+            ];
+        }
+
+        function translation(x, y, z) {
+            return [
+                [1, 0, 0, x],
+                [0, 1, 0, y],
+                [0, 0, 1, z],
+                [0, 0, 0, 1]
+            ];
+        }
+
+        function rotationX(angle) {
+            const cos = Math.cos(angle);
+            const sin = Math.sin(angle);
+
+            return [
+                [1, 0,    0,    0],
+                [0, cos, -sin,  0],
+                [0, sin,  cos,  0],
+                [0, 0,    0,    1]
+            ];
+        }
+
+        function rotationY(angle) {
+            const cos = Math.cos(angle);
+            const sin = Math.sin(angle);
+
+            return [
+                [ cos, 0, sin, 0],
+                [ 0,   1, 0,   0],
+                [-sin, 0, cos, 0],
+                [ 0,   0, 0,   1]
+            ];
+        }
+
+        function multiplyMatrices(A, B) {
+            const result = [
+                [0, 0, 0, 0],
+                [0, 0, 0, 0],
+                [0, 0, 0, 0],
+                [0, 0, 0, 0]
+            ];
+
+            for (let row = 0; row < 4; row++) {
+                for (let col = 0; col < 4; col++) {
+                    for (let k = 0; k < 4; k++) {
+                        result[row][col] += A[row][k] * B[k][col];
+                    }
+                }
+            }
+
+            return result;
+        }
+
+        function transformPoint(point, matrix) {
+            const [x, y, z] = point;
+
+            return [
+                x * matrix[0][0] + y * matrix[0][1] + z * matrix[0][2] + matrix[0][3],
+                x * matrix[1][0] + y * matrix[1][1] + z * matrix[1][2] + matrix[1][3],
+                x * matrix[2][0] + y * matrix[2][1] + z * matrix[2][2] + matrix[2][3]
+            ];
+        }
+
+        // A direction only turns, it never moves: skip the last column.
+        function transformDirection(direction, matrix) {
+            const [x, y, z] = direction;
+
+            return [
+                x * matrix[0][0] + y * matrix[0][1] + z * matrix[0][2],
+                x * matrix[1][0] + y * matrix[1][1] + z * matrix[1][2],
+                x * matrix[2][0] + y * matrix[2][1] + z * matrix[2][2]
+            ];
+        }
+
+        function toRadians(degrees) {
+            return degrees * Math.PI / 180;
+        }
+
+        // =====================================================
+        // 3. BODIES: a brick (or the ball) and its matrix.
+        //
+        // body.axes are the matrix columns: the brick's long, tall and deep directions.
+        // body.position is the last column: the middle of the brick.
+        // =====================================================
+
+        let bricks = [];
+        let wreckingBall = null;
+        let released = false;
+        let touches = [];
+
+        // From the brick's own directions to the room: use the matrix.
+        function toWorld(body, local) {
+            return add(body.position, toWorldDirection(body, local));
+        }
+
+        function toWorldDirection(body, local) {
+            const [long, tall, deep] = body.axes;
+            return add(add(scale(long, local[0]), scale(tall, local[1])), scale(deep, local[2]));
+        }
+
+        // From the room to the brick's own point of view: undo the matrix.
+        // For a turn, undoing is easy: the columns become rows.
+        function toLocal(body, point) {
+            return toLocalDirection(body, subtract(point, body.position));
+        }
+
+        function toLocalDirection(body, direction) {
+            const [long, tall, deep] = body.axes;
+            return [dot(direction, long), dot(direction, tall), dot(direction, deep)];
+        }
+
+        function bodyMatrix(body) {
+            const [long, tall, deep] = body.axes;
+            const p = body.position;
+
+            return [
+                [long[0], tall[0], deep[0], p[0]],
+                [long[1], tall[1], deep[1], p[1]],
+                [long[2], tall[2], deep[2], p[2]],
+                [0,       0,       0,       1   ]
+            ];
+        }
+
+        // Turn a body by a tiny turn (an arrow: its direction is the turning axis,
+        // its length is the angle). Each matrix column turns with it.
+        function turnBody(body, turn) {
+            const [long, tall] = body.axes.map(axis => add(axis, cross(turn, axis)));
+
+            // Tidy the matrix so its columns stay square to each other and 1 long.
+            const newLong = normalize(long);
+            const newTall = normalize(subtract(tall, scale(newLong, dot(newLong, tall))));
+            body.axes = [newLong, newTall, cross(newLong, newTall)];
+        }
+
+        // How easily a body moves. The ground, a held ball or a sleeping brick cannot move.
+        function canMove(body) {
+            return body !== null && !body.pinned && body.awake;
+        }
+
+        function inverseMass(body) {
+            return canMove(body) ? 1 / body.mass : 0;
+        }
+
+        // How easily a body turns around a direction. A long brick is
+        // harder to turn end over end than to roll along its length.
+        function turnResponse(body, direction) {
+            if (!canMove(body)) {
+                return [0, 0, 0];
+            }
+
+            let result = [0, 0, 0];
+
+            body.axes.forEach((axis, i) => {
+                result = add(result, scale(axis, body.inverseInertia[i] * dot(axis, direction)));
+            });
+
+            return result;
+        }
+
+        // How hard it is to move the point "offset" (from the middle) along "direction".
+        // RULE 2 lives here: a push away from the middle also turns the body,
+        // so the point gives way more easily.
+        function pointWeight(body, offset, direction) {
+            if (!canMove(body)) {
+                return 0;
+            }
+
+            const lever = cross(offset, direction);
+            return inverseMass(body) + dot(lever, turnResponse(body, lever));
+        }
+
+        // Push a body at a point: it moves, and it turns if the push is off-centre.
+        function pushBody(body, offset, push) {
+            if (!canMove(body)) {
+                return;
+            }
+
+            body.position = add(body.position, scale(push, inverseMass(body)));
+            turnBody(body, turnResponse(body, cross(offset, push)));
+        }
+
+        // Change a body's speed and spin by a kick at a point.
+        function kickBody(body, offset, kick) {
+            if (!canMove(body)) {
+                return;
+            }
+
+            body.velocity = add(body.velocity, scale(kick, inverseMass(body)));
+            body.spin = add(body.spin, turnResponse(body, cross(offset, kick)));
+        }
+
+        function pointVelocity(body, offset) {
+            if (!canMove(body)) {
+                return [0, 0, 0];
+            }
+
+            return add(body.velocity, cross(body.spin, offset));
+        }
+
+        // Move point A of body A and point B of body B apart by "amount" along "direction".
+        // Both bodies share the work: the one that gives way more easily moves more.
+        function moveApart(A, offsetA, B, offsetB, direction, amount) {
+            const total = pointWeight(A, offsetA, direction) + pointWeight(B, offsetB, direction);
+
+            if (total === 0) {
+                return 0;
+            }
+
+            const strength = amount / total;
+            pushBody(A, offsetA, scale(direction, strength));
+            pushBody(B, offsetB, scale(direction, -strength));
+            return strength;
+        }
+
+        // =====================================================
+        // 4. RULE 1: NOTHING MAY BE INSIDE A BRICK
+        // =====================================================
+
+        // Is this point inside the brick? Look at it from the brick's point of view.
+        // Returns how deep it is and the way out, or null if it is outside.
+        // "margin" makes the box a little bigger, to notice things that just touch.
+        // "localBefore" is where the point was a moment ago, seen from the brick.
+        function insideBrick(point, brick, margin = 0, localBefore = null) {
+            const local = toLocal(brick, point);
+            const half = brick.halfSize;
+
+            if (local.some((value, axis) => Math.abs(value) >= half[axis] + margin)) {
+                return null;
+            }
+
+            // Leave through the face the point came in through: the side where it
+            // was furthest outside a moment ago. If we do not know, use the nearest face.
+            let axis = 0;
+
+            if (localBefore) {
+                for (let i = 1; i < 3; i++) {
+                    if (Math.abs(localBefore[i]) - half[i] > Math.abs(localBefore[axis]) - half[axis]) {
+                        axis = i;
+                    }
+                }
+            }
+
+            if (!localBefore || Math.abs(localBefore[axis]) - half[axis] < -margin) {
+                axis = 0;
+
+                for (let i = 1; i < 3; i++) {
+                    if (half[i] - Math.abs(local[i]) < half[axis] - Math.abs(local[axis])) {
+                        axis = i;
+                    }
+                }
+            }
+
+            const sign = local[axis] < 0 ? -1 : 1;
+            return { depth: half[axis] - Math.abs(local[axis]), wayOut: scale(brick.axes[axis], sign) };
+        }
+
+        // Where was a body a moment ago (at the start of this step)?
+        function poseBefore(body) {
+            if (canMove(body) && body.lastPosition) {
+                return { position: body.lastPosition, axes: body.lastAxes };
+            }
+
+            return body;
+        }
+
+        // A sleeping brick comes loose when something hits it hard enough.
+        function wakeIfHit(mover, offset, sleeper) {
+            const needed = knockLooseSpeed[document.getElementById('mortar').value];
+
+            if (sleeper && !sleeper.awake && length(pointVelocity(mover, offset)) > needed) {
+                wake(sleeper);
+            }
+        }
+
+        // Body A's point is inside body B: push them apart, and remember the touch.
+        function separate(A, B, point, wayOut, depth) {
+            const offsetA = subtract(point, A.position);
+            const offsetB = B ? subtract(point, B.position) : [0, 0, 0];
+
+            const relative = subtract(pointVelocity(A, offsetA), pointVelocity(B, offsetB));
+            const pushed = moveApart(A, offsetA, B, offsetB, wayOut, depth);
+
+            touches.push({
+                A, B, wayOut,
+                localA: toLocalDirection(A, offsetA),
+                localB: B ? toLocalDirection(B, offsetB) : null,
+                pushed,
+                speedBefore: dot(relative, wayOut)
+            });
+        }
+
+        // Sticky friction: if the touching points slid only a little in this step,
+        // and they press together hard enough, cancel the sliding.
+        function holdStill(touch) {
+            const { A, B, wayOut, localA, localB, pushed } = touch;
+            const offsetA = toWorldDirection(A, localA);
+            const offsetB = B ? toWorldDirection(B, localB) : [0, 0, 0];
+
+            let slide = subtract(movedInStep(A, localA, offsetA), movedInStep(B, localB, offsetB));
+            slide = subtract(slide, scale(wayOut, dot(slide, wayOut)));
+            const slideLength = length(slide);
+
+            if (slideLength === 0) {
+                return;
+            }
+
+            const back = scale(slide, -1 / slideLength);
+            const total = pointWeight(A, offsetA, back) + pointWeight(B, offsetB, back);
+
+            if (total > 0 && slideLength / total < stickyFriction * pushed) {
+                moveApart(A, offsetA, B, offsetB, back, slideLength);
+            }
+        }
+
+        // How far a point of a body has moved since the start of this step.
+        function movedInStep(body, local, offset) {
+            if (!canMove(body) || !body.lastPosition) {
+                return [0, 0, 0];
+            }
+
+            const [long, tall, deep] = body.lastAxes;
+            const before = add(body.lastPosition,
+                add(add(scale(long, local[0]), scale(tall, local[1])), scale(deep, local[2])));
+
+            return subtract(add(body.position, offset), before);
+        }
+
+        function collideBricks() {
+            const list = inFairOrder(bricks);
+
+            for (let first = 0; first < list.length; first++) {
+                for (let second = first + 1; second < list.length; second++) {
+                    const A = list[first];
+                    const B = list[second];
+
+                    // Two sleeping bricks, or two bricks far apart: nothing to do.
+                    if ((!A.awake && !B.awake) || distance3D(A.position, B.position) > A.reach + B.reach + 1) {
+                        continue;
+                    }
+
+                    checkCorners(A, B);
+                    checkCorners(B, A);
+                }
+            }
+        }
+
+        // The last push in a step always wins a little. So that no side of a brick
+        // always wins, we check the corners forwards in one step and backwards in the next.
+        let stepCount = 0;
+
+        function inFairOrder(list) {
+            return stepCount % 2 === 0 ? list : [...list].reverse();
+        }
+
+        // Are any corners of brick A inside brick B?
+        function checkCorners(A, B) {
+            const beforeA = poseBefore(A);
+            const beforeB = poseBefore(B);
+
+            for (const local of inFairOrder(A.corners)) {
+                const point = toWorld(A, local);
+                const localBefore = toLocal(beforeB, toWorld(beforeA, local));
+                const inside = insideBrick(point, B, 0.5, localBefore);
+
+                if (!inside) {
+                    continue;
+                }
+
+                wakeIfHit(A, subtract(point, A.position), B);
+                wakeIfHit(B, subtract(point, B.position), A);
+
+                if (inside.depth > allowedOverlap && (A.awake || B.awake)) {
+                    separate(A, B, point, inside.wayOut, inside.depth - allowedOverlap);
+                }
+            }
+        }
+
+        function collideFloor() {
+            for (const brick of bricks) {
+                if (!brick.awake) {
+                    continue;
+                }
+
+                for (const local of inFairOrder(brick.corners)) {
+                    const point = toWorld(brick, local);
+
+                    if (point[1] < cornerInset) {
+                        separate(brick, null, point, [0, 1, 0], cornerInset - point[1]);
+                    }
+                }
+            }
+        }
+
+        // The ball is round: find the point of the brick closest to its middle.
+        function collideWreckingBall() {
+            if (wreckingBall.pinned) {
+                return;
+            }
+
+            for (const brick of bricks) {
+                if (distance3D(brick.position, wreckingBall.position) > brick.reach + wreckingBallRadius) {
+                    continue;
+                }
+
+                const local = toLocal(brick, wreckingBall.position);
+                const closest = local.map((value, axis) => clamp(value, -brick.halfSize[axis], brick.halfSize[axis]));
+                const gap = subtract(local, closest);
+                const gapLength = length(gap);
+
+                if (gapLength >= wreckingBallRadius || gapLength === 0) {
+                    continue;
+                }
+
+                const point = toWorld(brick, closest);
+                const wayOut = toWorldDirection(brick, scale(gap, 1 / gapLength));
+
+                wakeIfHit(wreckingBall, subtract(point, wreckingBall.position), brick);
+                separate(wreckingBall, brick, point, wayOut, wreckingBallRadius - gapLength);
+            }
+        }
+
+        // =====================================================
+        // 5. THE ROPE, SLEEPING AND MORTAR
+        // =====================================================
+
+        // The rope only pulls when it is tight.
+        function solveRope() {
+            const gap = subtract(pivot, wreckingBall.position);
+            const tooLong = length(gap) - ropeLength;
+
+            if (tooLong > 0) {
+                moveApart(wreckingBall, [0, 0, 0], null, null, normalize(gap), tooLong);
+            }
+        }
+
+        function wake(body) {
+            if (body.awake) {
+                return;
+            }
+
+            body.awake = true;
+            body.stillTime = 0;
+            body.velocity = [0, 0, 0];
+            body.spin = [0, 0, 0];
+            body.lastPosition = [...body.position];
+            body.lastAxes = body.axes.map(axis => [...axis]);
+            body.wokeAt = [...body.position];
+            body.loose = true;
+        }
+
+        // The bricks a brick is resting on: their top touches its bottom corners.
+        function findSupports(brick) {
+            return bricks.filter(other => other !== brick
+                && other.position[1] < brick.position[1] - brickHeight / 4
+                && brick.corners.some(local => insideBrick(toWorld(brick, local), other, cornerInset + 0.5)));
+        }
+
+        // Has this brick moved away from where it was when it woke up?
+        function movedAway(brick) {
+            return brick.awake && distance3D(brick.position, brick.wokeAt) > 4;
+        }
+
+        // Does a sleeping brick lose its support?
+        //   no mortar:     it falls if ANY brick under it moves away
+        //   weak mortar:   it falls only if ALL bricks under it move away
+        //   strong mortar: it stays glued, even over a hole
+        function lostSupport(brick) {
+            const mortar = document.getElementById('mortar').value;
+
+            if (mortar === 'strong' || brick.supports.length === 0) {
+                return false;
+            }
+
+            return mortar === 'none'
+                ? brick.supports.some(movedAway)
+                : brick.supports.every(movedAway);
+        }
+
+        // A brick that stays still for a while falls asleep.
+        // A sleeping brick wakes up again if what holds it up moves away.
+        function updateSleep(dt) {
+            for (const brick of bricks) {
+                if (!brick.awake) {
+                    if (lostSupport(brick)) {
+                        wake(brick);
+                    }
+
+                    continue;
+                }
+
+                const speed = length(brick.velocity) + length(brick.spin) * brick.reach;
+                brick.stillTime = speed < sleepSpeed ? brick.stillTime + dt : 0;
+
+                if (brick.stillTime > sleepAfter) {
+                    brick.awake = false;
+                    brick.velocity = [0, 0, 0];
+                    brick.spin = [0, 0, 0];
+                    brick.supports = findSupports(brick);
+                }
+            }
+        }
+
+        // =====================================================
+        // 6. ONE SMALL STEP OF TIME
+        // =====================================================
+
+        function movingBodies() {
+            return [...bricks, wreckingBall].filter(canMove);
+        }
+
+        function step(h) {
+            stepCount++;
+            const moving = movingBodies();
+
+            // Move and turn every body with its speed and spin, and let gravity pull.
+            for (const body of moving) {
+                body.lastPosition = [...body.position];
+                body.lastAxes = body.axes.map(axis => [...axis]);
+                body.velocity[1] -= gravity * h;
+                body.position = add(body.position, scale(body.velocity, h));
+                turnBody(body, scale(body.spin, h));
+            }
+
+            // Make the rules true again.
+            touches = [];
+            collideBricks();
+            collideWreckingBall();
+            collideFloor();
+            solveRope();
+
+            // Friction last, after all the pushes, so no push can undo it.
+            for (const touch of inFairOrder(touches)) {
+                holdStill(touch);
+            }
+
+            // The new speed is how far each body really moved in this step.
+            for (const body of movingBodies()) {
+                if (!body.lastPosition) {
+                    continue;
+                }
+
+                body.velocity = scale(subtract(body.position, body.lastPosition), 1 / h);
+
+                // The new spin: how far each matrix column turned.
+                let turned = [0, 0, 0];
+                body.axes.forEach((axis, i) => {
+                    turned = add(turned, cross(body.lastAxes[i], axis));
+                });
+                body.spin = scale(turned, 0.5 / h);
+            }
+
+            // Bounce a little, and rub (sliding friction) at every touch.
+            for (const touch of touches) {
+                settleTouch(touch, h);
+            }
+
+            // A brick that touches something and moves very slowly settles down:
+            // its tiny wobbles fade away. Flying and tumbling bricks are not slowed.
+            for (const touch of touches) {
+                for (const body of [touch.A, touch.B]) {
+                    if (body && body !== wreckingBall && canMove(body)
+                        && length(body.velocity) + length(body.spin) * body.reach < settleSpeed) {
+                        body.velocity = scale(body.velocity, 0.9);
+                        body.spin = scale(body.spin, 0.9);
+                    }
+                }
+            }
+        }
+
+        function settleTouch(touch, h) {
+            const { A, B, wayOut, localA, localB, pushed, speedBefore } = touch;
+            const offsetA = toWorldDirection(A, localA);
+            const offsetB = B ? toWorldDirection(B, localB) : [0, 0, 0];
+
+            const relative = subtract(pointVelocity(A, offsetA), pointVelocity(B, offsetB));
+            const apart = dot(relative, wayOut);
+            const sliding = subtract(relative, scale(wayOut, apart));
+            const slideSpeed = length(sliding);
+
+            let change = [0, 0, 0];
+
+            // Sliding friction: rubbing slows the sliding, more when pressing harder.
+            if (slideSpeed > 0) {
+                change = scale(sliding, -Math.min(slidingFriction * pushed / h, slideSpeed) / slideSpeed);
+            }
+
+            // Bounce: slow things that were landing gently do not bounce at all.
+            const bounce = Math.abs(speedBefore) < 2 * gravity * h ? 0 : bounciness;
+            change = add(change, scale(wayOut, -apart + Math.max(-bounce * speedBefore, 0)));
+
+            const size = length(change);
+
+            if (size === 0) {
+                return;
+            }
+
+            const direction = scale(change, 1 / size);
+            const total = pointWeight(A, offsetA, direction) + pointWeight(B, offsetB, direction);
+
+            if (total > 0) {
+                kickBody(A, offsetA, scale(change, 1 / total));
+                kickBody(B, offsetB, scale(change, -1 / total));
+            }
+        }
+
+        function update(dt) {
+            for (let i = 0; i < stepsPerFrame; i++) {
+                step(dt / stepsPerFrame);
+            }
+
+            updateSleep(dt);
+        }
+
+        // =====================================================
+        // 7. BUILDING THE WALL
+        // =====================================================
+
+        // Where each brick goes.
+        // turn = how far it is turned, in degrees. size = 1 for a whole brick, 0.5 for a half.
+        function wallPlan() {
+            const plan = [];
+
+            for (let row = 0; row < wall.rows; row++) {
+                // Every second row starts and ends with half a brick, like a real wall.
+                // Then every brick sits across the gap between two bricks below it.
+                const pieces = row % 2 === 0 ? Array(wall.bricksPerRow).fill(1) : [0.5, ...Array(wall.bricksPerRow - 1).fill(1), 0.5];
+
+                const rowLength = pieces.reduce((sum, size) => sum + size * brickLength, 0);
+                let x = -rowLength / 2;
+
+                for (const size of pieces) {
+                    const length = size * brickLength;
+                    plan.push({ x: x + length / 2, y: brickHeight / 2 + row * brickHeight, z: 0, turn: 0, size });
+                    x += length;
+                }
+            }
+
+            return plan;
+        }
+
+        function makeBrick(place) {
+            const size = place.size || 1;
+            const half = [size * brickLength / 2, brickHeight / 2, brickDepth / 2];
+            const mass = size * brickMass;
+            const [a, b, c] = half.map(value => 2 * value);
+
+            // The turn matrix gives the brick's starting directions.
+            const turn = rotationY(toRadians(place.turn));
+
+            const brick = {
+                position: [place.x, place.y, place.z],
+                axes: [[1, 0, 0], [0, 1, 0], [0, 0, 1]].map(axis => transformDirection(axis, turn)),
+                velocity: [0, 0, 0],
+                spin: [0, 0, 0],
+                mass,
+                // How hard it is to turn the brick around each of its own directions.
+                inverseInertia: [12 / (mass * (b * b + c * c)), 12 / (mass * (a * a + c * c)), 12 / (mass * (a * a + b * b))],
+                halfSize: half,
+                reach: length(half),
+                awake: false,
+                stillTime: 0,
+                pinned: false,
+                hue: 8 + Math.random() * 10,
+                lightness: 38 + Math.random() * 10,
+                highlighted: false
+            };
+
+            // The points we check: the 8 corners, plus the middle of each long edge.
+            // They sit a hair inside the real corners. Then a corner resting on another
+            // brick is clearly on its top face, not exactly on its edge.
+            brick.corners = [];
+            const inside = half.map(value => value - cornerInset);
+
+            for (const x of size === 1 ? [-1, 0, 1] : [-1, 1]) {
+                for (const y of [-1, 1]) {
+                    for (const z of [-1, 1]) {
+                        brick.corners.push([x * inside[0], y * inside[1], z * inside[2]]);
+                    }
+                }
+            }
+
+            bricks.push(brick);
+            return brick;
+        }
+
+        function placeWreckingBall() {
+            const angle = toRadians(Number(document.getElementById('swing').value));
+
+            wreckingBall.position = [
+                pivot[0],
+                pivot[1] - ropeLength * Math.cos(angle),
+                pivot[2] - ropeLength * Math.sin(angle)
+            ];
+            wreckingBall.velocity = [0, 0, 0];
+        }
+
+        function ballMass() {
+            return Number(document.getElementById('weight').value) * brickMass;
+        }
+
+        function build() {
+            bricks = [];
+            released = false;
+
+            for (const place of wallPlan()) {
+                makeBrick(place);
+            }
+
+            wreckingBall = {
+                position: [...pivot],
+                axes: [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+                velocity: [0, 0, 0],
+                spin: [0, 0, 0],
+                mass: ballMass(),
+                inverseInertia: [0, 0, 0],      // the ball does not need to spin
+                awake: true,
+                pinned: true
+            };
+            placeWreckingBall();
+
+            // Let the wall settle into place for a moment (bricks sink a hair into
+            // each other), then put every brick to sleep before the game starts.
+            for (let i = 0; i < 15; i++) {
+                bricks.forEach(wake);
+                step(1 / 600);
+            }
+
+            for (const brick of bricks) {
+                brick.awake = false;
+                brick.loose = false;
+                brick.velocity = [0, 0, 0];
+                brick.spin = [0, 0, 0];
+            }
+
+            for (const brick of bricks) {
+                brick.supports = findSupports(brick);
+            }
+
+            // The yellow brick is the one nearest to where the ball will hit.
+            const target = [0, pivot[1] - ropeLength, 0];
+            const nearest = bricks.reduce((best, brick) =>
+                distance3D(brick.position, target) < distance3D(best.position, target) ? brick : best, bricks[0]);
+
+            if (nearest) {
+                nearest.highlighted = true;
+            }
+
+            letGoButton.disabled = false;
+        }
+
+        // =====================================================
+        // 8. DRAWING
+        // =====================================================
+
+        let viewAngleX = -0.3;
+        let viewAngleY = 0.8;
+        const cameraDistance = 1500;
+        const focalLength = 1150;
+        const lookAt = [0, 170, -60];
+        const light = normalize([0.4, 0.8, -0.45]);
+
+        function viewMatrix() {
+            const cameraTurn = multiplyMatrices(rotationX(viewAngleX), rotationY(viewAngleY));
+            return multiplyMatrices(cameraTurn, translation(-lookAt[0], -lookAt[1], -lookAt[2]));
+        }
+
+        // Perspective, like Canvas 4.2: screenX = f * x / z
+        function project(point, view) {
+            const [x, y, z] = transformPoint(point, view);
+            const depth = z + cameraDistance;
+            const scale = focalLength / depth;
+
+            return {
+                x: canvas.width / 2 + x * scale,
+                y: canvas.height / 2 - y * scale,
+                depth,
+                scale
+            };
+        }
+
+        // The 8 corners of a box (times its half size), and its 6 faces with the way each one faces.
+        const boxCorners = [
+            [-1, -1, -1], [ 1, -1, -1], [ 1,  1, -1], [-1,  1, -1],
+            [-1, -1,  1], [ 1, -1,  1], [ 1,  1,  1], [-1,  1,  1]
+        ];
+
+        const faces = [
+            { corners: [0, 1, 2, 3], facing: [ 0,  0, -1] },
+            { corners: [4, 5, 6, 7], facing: [ 0,  0,  1] },
+            { corners: [0, 1, 5, 4], facing: [ 0, -1,  0] },
+            { corners: [3, 2, 6, 7], facing: [ 0,  1,  0] },
+            { corners: [0, 3, 7, 4], facing: [-1,  0,  0] },
+            { corners: [1, 2, 6, 5], facing: [ 1,  0,  0] }
+        ];
+
+        function tracePolygon(points) {
+            ctx.beginPath();
+            points.forEach((point, index) => {
+                if (index === 0) {
+                    ctx.moveTo(point.x, point.y);
+                } else {
+                    ctx.lineTo(point.x, point.y);
+                }
+            });
+            ctx.closePath();
+        }
+
+        function drawLine(A, B, color, width) {
+            ctx.strokeStyle = color;
+            ctx.lineWidth = width;
+            ctx.beginPath();
+            ctx.moveTo(A.x, A.y);
+            ctx.lineTo(B.x, B.y);
+            ctx.stroke();
+        }
+
+        function drawGround(view) {
+            const size = 900;
+            tracePolygon([[-size, 0, -size], [size, 0, -size], [size, 0, size], [-size, 0, size]]
+                .map(point => project(point, view)));
+            ctx.fillStyle = '#d9f99d';
+            ctx.fill();
+
+            for (let i = -size; i <= size; i += 100) {
+                drawLine(project([i, 0, -size], view), project([i, 0, size], view), '#bef264', 1);
+                drawLine(project([-size, 0, i], view), project([size, 0, i], view), '#bef264', 1);
+            }
+        }
+
+        function drawCrane(view) {
+            const top = project(pivot, view);
+            const legColor = '#475569';
+
+            drawLine(project([-260, 0, pivot[2]], view), top, legColor, 5);
+            drawLine(project([ 260, 0, pivot[2]], view), top, legColor, 5);
+            drawLine(top, project(wreckingBall.position, view), '#1f2937', 2);
+        }
+
+        // Faces facing away from us are hidden behind the brick: skip them.
+        function brickFaces(brick, view) {
+            const matrix = bodyMatrix(brick);
+            const toScreen = multiplyMatrices(view, matrix);
+            const sized = boxCorners.map(corner => corner.map((value, axis) => value * brick.halfSize[axis]));
+            const list = [];
+
+            for (const face of faces) {
+                const points = face.corners.map(i => project(sized[i], toScreen));
+                const middle = transformPoint(face.facing.map((value, axis) => value * brick.halfSize[axis]), toScreen);
+                const facing = transformDirection(face.facing, toScreen);
+                const towardsUs = facing[0] * middle[0] + facing[1] * middle[1] + facing[2] * (middle[2] + cameraDistance);
+
+                if (towardsUs >= 0) {
+                    continue;
+                }
+
+                // Faces turned towards the light are brighter.
+                const worldFacing = transformDirection(face.facing, matrix);
+                const brightness = 0.6 + 0.4 * Math.max(0, dot(worldFacing, light));
+
+                const hue = brick.highlighted ? 45 : brick.hue;
+                const lightness = (brick.highlighted ? 55 : brick.lightness) * brightness;
+
+                list.push({
+                    depth: points.reduce((sum, point) => sum + point.depth, 0) / points.length,
+                    paint: () => {
+                        tracePolygon(points);
+                        ctx.fillStyle = `hsl(${hue}, 65%, ${lightness}%)`;
+                        ctx.strokeStyle = '#7f1d1d';
+                        ctx.lineWidth = 1;
+                        ctx.fill();
+                        ctx.stroke();
+                    }
+                });
+            }
+
+            return list;
+        }
+
+        function wreckingBallPaint(view) {
+            const point = project(wreckingBall.position, view);
+            const r = wreckingBallRadius * point.scale;
+
+            return {
+                depth: point.depth,
+                paint: () => {
+                    ctx.fillStyle = '#334155';
+                    ctx.beginPath();
+                    ctx.arc(point.x, point.y, r, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
+                    ctx.beginPath();
+                    ctx.arc(point.x - r * 0.35, point.y - r * 0.35, r * 0.2, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            };
+        }
+
+        // The skeleton shows the points we check, the mortar,
+        // and each brick's three matrix directions: long (red), tall (green), deep (blue).
+        function drawSkeleton(view) {
+            const arrowColors = ['#dc2626', '#16a34a', '#2563eb'];
+
+            for (const brick of bricks) {
+                const toScreen = multiplyMatrices(view, bodyMatrix(brick));
+                const middle = project([0, 0, 0], toScreen);
+
+                brick.halfSize.forEach((size, axis) => {
+                    const tip = [0, 0, 0];
+                    tip[axis] = size;
+                    drawLine(middle, project(tip, toScreen), arrowColors[axis], 2);
+                });
+
+                ctx.fillStyle = brick.awake ? '#dc2626' : '#78716c';
+
+                for (const local of brick.corners) {
+                    const point = project(local, toScreen);
+                    ctx.beginPath();
+                    ctx.arc(point.x, point.y, 3, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+
+            // White lines: which bricks hold up each sleeping brick.
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+
+            for (const brick of bricks) {
+                if (brick.awake) {
+                    continue;
+                }
+
+                for (const support of brick.supports) {
+                    const A = project(brick.position, view);
+                    const B = project(support.position, view);
+                    ctx.moveTo(A.x, A.y);
+                    ctx.lineTo(B.x, B.y);
+                }
+            }
+
+            ctx.stroke();
+        }
+
+        function draw() {
+            const view = viewMatrix();
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawGround(view);
+            drawCrane(view);
+
+            // Far things are painted first, so near things cover them.
+            const paintList = [wreckingBallPaint(view)];
+
+            if (!skeleton.checked) {
+                for (const brick of bricks) {
+                    paintList.push(...brickFaces(brick, view));
+                }
+            }
+
+            paintList.sort((A, B) => B.depth - A.depth);
+
+            for (const item of paintList) {
+                item.paint();
+            }
+
+            if (skeleton.checked) {
+                drawSkeleton(view);
+            }
+
+            showNumbers();
+        }
+
+        function showNumbers() {
+            const brick = bricks.find(b => b.highlighted);
+
+            if (brick) {
+                const header = '   long   tall   deep  middle\n';
+
+                document.getElementById('matrixNumbers').innerHTML = header + bodyMatrix(brick).map(row => row.map((value, col) => {
+                    const shown = Math.abs(value) < 0.005 ? 0 : value;
+                    const text = shown.toFixed(col === 3 ? 0 : 2).padStart(7);
+                    return col === 3 ? `<span class="where">${text}</span>` : text;
+                }).join('')).join('\n');
+            }
+
+            const awake = bricks.filter(b => b.awake).length;
+            const loose = bricks.filter(b => b.loose).length;
+
+            message.textContent = released
+                ? `Knocked loose: ${loose} of ${bricks.length} bricks.   Moving right now: ${awake}.`
+                : 'Choose the swing height and the weight, then press "Let go!"';
+
+            document.getElementById('swingValue').textContent = document.getElementById('swing').value + '°';
+            document.getElementById('weightValue').textContent = document.getElementById('weight').value + ' bricks';
+        }
+
+        // =====================================================
+        // 9. BUTTONS, SLIDERS AND MOUSE
+        // =====================================================
+
+        let lastTime = null;
+
+        function animate(time) {
+            if (lastTime !== null && released) {
+                const dt = Math.min((time - lastTime) / 1000, 1 / 30);
+                update(slowMotion.checked ? dt / 4 : dt);
+            }
+
+            lastTime = time;
+            draw();
+            requestAnimationFrame(animate);
+        }
+
+        letGoButton.addEventListener('click', function () {
+            wreckingBall.pinned = false;
+            released = true;
+            letGoButton.disabled = true;
+        });
+
+        document.getElementById('reset').addEventListener('click', build);
+        document.getElementById('mortar').addEventListener('change', build);
+
+        document.getElementById('swing').addEventListener('input', function () {
+            if (!released) {
+                placeWreckingBall();
+            }
+        });
+
+        document.getElementById('weight').addEventListener('input', function () {
+            wreckingBall.mass = ballMass();
+        });
+
+        canvas.addEventListener('pointerdown', function (event) {
+            canvas.setPointerCapture(event.pointerId);
+        });
+
+        canvas.addEventListener('pointermove', function (event) {
+            if (canvas.hasPointerCapture(event.pointerId)) {
+                viewAngleY -= event.movementX * 0.01;
+                viewAngleX = Math.max(-1.4, Math.min(0.1, viewAngleX - event.movementY * 0.01));
+            }
+        });
+
+        build();
+        requestAnimationFrame(animate);
+    </script>
+</body>
+</html>

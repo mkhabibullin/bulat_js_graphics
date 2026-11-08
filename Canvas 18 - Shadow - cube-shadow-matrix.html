@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Shadow Matrix</title>
+    <style>
+        body {
+            max-width: 800px;
+            margin: 24px auto;
+            padding: 0 16px;
+            font-family: system-ui, sans-serif;
+            color: #1f2937;
+            background: white;
+        }
+
+        h2 {
+            margin-bottom: 6px;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: auto;
+            border: 1px solid #cbd5e1;
+            background: #e0f2fe;
+            cursor: grab;
+            touch-action: none;
+        }
+
+        .rule {
+            padding: 10px 14px;
+            margin: 12px 0;
+            background: #fef9c3;
+            border-left: 5px solid #facc15;
+            font-size: 18px;
+        }
+
+        #message {
+            min-height: 3em;
+            font-size: 17px;
+        }
+
+        #message.won {
+            color: #15803d;
+            font-weight: bold;
+        }
+
+        .sliders {
+            display: grid;
+            grid-template-columns: auto 1fr 3.5em;
+            align-items: center;
+            gap: 6px 12px;
+            margin: 14px 0;
+        }
+
+        .sliders input {
+            width: 100%;
+            margin: 0;
+        }
+
+        .sliders input:disabled {
+            opacity: 0.35;
+        }
+
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 12px;
+            margin: 14px 0;
+        }
+
+        button {
+            padding: 7px 11px;
+            font: inherit;
+        }
+
+        .numbers {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 28px;
+        }
+
+        .numbers h3 {
+            margin: 0 0 4px;
+            font-size: 16px;
+        }
+
+        pre {
+            margin: 0;
+            padding: 8px 10px;
+            background: #f1f5f9;
+            font-family: ui-monospace, monospace;
+            font-size: 15px;
+            line-height: 1.5;
+        }
+
+        .flat {
+            color: #c2410c;
+            font-weight: bold;
+        }
+
+        .note {
+            color: #475569;
+            font-size: 15px;
+        }
+
+        code {
+            font-family: ui-monospace, monospace;
+            overflow-wrap: anywhere;
+        }
+    </style>
+</head>
+<body>
+    <h2>Shadows: a matrix that flattens the world</h2>
+
+    <div class="rule">
+        <b>The one rule:</b> a shadow is the same cube, with one more matrix.<br>
+        <code>shadow of cube = shadowMatrix &times; cubeMatrix</code>
+    </div>
+
+    <canvas id="canvas" width="800" height="600"></canvas>
+
+    <p id="message"></p>
+
+    <div class="sliders">
+        <label for="turn">Turn cube</label>
+        <input id="turn" type="range" min="0" max="360" step="any">
+        <span id="turnValue"></span>
+
+        <label for="tip">Tip cube</label>
+        <input id="tip" type="range" min="0" max="360" step="any">
+        <span id="tipValue"></span>
+
+        <label for="lift">Lift cube</label>
+        <input id="lift" type="range" min="110" max="320" step="any">
+        <span id="liftValue"></span>
+
+        <label for="sunHeight">Sun height</label>
+        <input id="sunHeight" type="range" min="25" max="90" step="any">
+        <span id="sunHeightValue"></span>
+
+        <label for="sunDirection">Sun direction</label>
+        <input id="sunDirection" type="range" min="0" max="360" step="any">
+        <span id="sunDirectionValue"></span>
+    </div>
+
+    <div class="controls">
+        <label><input id="spin" type="checkbox"> Spin</label>
+        <label><input id="rays" type="checkbox"> Light rays</label>
+        <label><input id="hideCube" type="checkbox"> Hide the cube</label>
+        <button id="hexagon">Show me a hexagon</button>
+        <button id="puzzle">Shadow puzzle</button>
+        <button id="reset">Reset</button>
+    </div>
+
+    <div class="numbers">
+        <div>
+            <h3>The shadow matrix</h3>
+            <pre id="shadowNumbers"></pre>
+        </div>
+        <div>
+            <h3>Follow the orange corner</h3>
+            <pre id="cornerNumbers"></pre>
+        </div>
+    </div>
+
+    <p class="note">
+        The <span class="flat">orange row</span> is all zeros, so every height becomes 0 and everything lands on the floor.
+        Drag the picture to look around.
+    </p>
+
+    <h3>The big question</h3>
+    <p class="note">
+        Tick "Hide the cube", put the Sun at 90&deg;, and move "Lift cube". The shadow never changes!
+        So from the shadow alone, can you say how high the cube is? No: the matrix threw the height away,
+        and no other matrix can bring it back. A photo loses depth in the same way.
+    </p>
+
+    <h3>Try it yourself</h3>
+    <p class="note">
+        1. With a real box and a torch: can you make a six-sided shadow?<br>
+        2. Open this file in an editor and change the first row of <code>makeShadowMatrix</code> to <code>[2, sunX, 0, 0]</code>. What happens to the shadow?<br>
+        3. Turn the cube into a house. Add the corner <code>[0, 130, 0]</code> to <code>corners</code>, then add these to <code>faces</code>:<br>
+        <code>[3, 2, 8], [2, 6, 8], [6, 7, 8], [7, 3, 8],</code><br>
+        The shadow gets a roof too, and you did not change the shadow code at all!<br>
+        4. Harder: add a second Sun, with a second shadow matrix and a second shadow.
+    </p>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        const sliderNames = ['turn', 'tip', 'lift', 'sunHeight', 'sunDirection'];
+        const spin = document.getElementById('spin');
+        const rays = document.getElementById('rays');
+        const hideCube = document.getElementById('hideCube');
+        const hexagonButton = document.getElementById('hexagon');
+        const puzzleButton = document.getElementById('puzzle');
+        const message = document.getElementById('message');
+
+        const startValues = { turn: 20, tip: 25, lift: 190, sunHeight: 55, sunDirection: 150 };
+
+        // The same 8 corners as Canvas 3.
+        const corners = [
+            [-60, -60, -60],
+            [ 60, -60, -60],
+            [ 60,  60, -60],
+            [-60,  60, -60],
+            [-60, -60,  60],
+            [ 60, -60,  60],
+            [ 60,  60,  60],
+            [-60,  60,  60],
+        ];
+
+        // Each face is a list of corners.
+        const faces = [
+            [0, 1, 2, 3],
+            [4, 5, 6, 7],
+            [0, 1, 5, 4],
+            [3, 2, 6, 7],
+            [0, 3, 7, 4],
+            [1, 2, 6, 5],
+        ];
+
+        const faceColors = ['#ef4444', '#3b82f6', '#22c55e', '#facc15', '#a855f7', '#f97316'];
+
+        // The corner we follow in the numbers below the picture.
+        const followedCorner = 6;
+
+        const floorSize = 420;
+
+        // The puzzle: the green shadow we must cover, or null when not playing.
+        let target = null;
+        let solved = false;
+
+        // The camera. Drag the picture to change these angles.
+        let viewAngleX = -0.5;
+        let viewAngleY = -0.5;
+        const cameraDistance = 1200;
+        const focalLength = 640;
+
+        function getValue(name) {
+            return Number(document.getElementById(name).value);
+        }
+
+        function setValue(name, value) {
+            document.getElementById(name).value = value;
+        }
+
+        function toRadians(degrees) {
+            return degrees * Math.PI / 180;
+        }
+
+        // =====================================================
+        // 1. MATRICES: the same 4 x 4 ones as in Canvas 17.
+        // =====================================================
+
+        function translation(x, y, z) {
+            return [
+                [1, 0, 0, x],
+                [0, 1, 0, y],
+                [0, 0, 1, z],
+                [0, 0, 0, 1]
+            ];
+        }
+
+        function rotationX(angle) {
+            const cos = Math.cos(angle);
+            const sin = Math.sin(angle);
+
+            return [
+                [1, 0,    0,    0],
+                [0, cos, -sin,  0],
+                [0, sin,  cos,  0],
+                [0, 0,    0,    1]
+            ];
+        }
+
+        function rotationY(angle) {
+            const cos = Math.cos(angle);
+            const sin = Math.sin(angle);
+
+            return [
+                [ cos, 0, sin, 0],
+                [ 0,   1, 0,   0],
+                [-sin, 0, cos, 0],
+                [ 0,   0, 0,   1]
+            ];
+        }
+
+        function multiplyMatrices(A, B) {
+            const result = [
+                [0, 0, 0, 0],
+                [0, 0, 0, 0],
+                [0, 0, 0, 0],
+                [0, 0, 0, 0]
+            ];
+
+            for (let row = 0; row < 4; row++) {
+                for (let col = 0; col < 4; col++) {
+                    for (let k = 0; k < 4; k++) {
+                        result[row][col] += A[row][k] * B[k][col];
+                    }
+                }
+            }
+
+            return result;
+        }
+
+        function transformPoint(point, matrix) {
+            const [x, y, z] = point;
+
+            return [
+                x * matrix[0][0] + y * matrix[0][1] + z * matrix[0][2] + matrix[0][3],
+                x * matrix[1][0] + y * matrix[1][1] + z * matrix[1][2] + matrix[1][3],
+                x * matrix[2][0] + y * matrix[2][1] + z * matrix[2][2] + matrix[2][3]
+            ];
+        }
+
+        // =====================================================
+        // 2. THE CUBE AND ITS SHADOW: the heart of the program.
+        // =====================================================
+
+        // First turn the cube, then tip it, then lift it off the floor.
+        function makeCubeMatrix(turn, tip, lift) {
+            const turned = multiplyMatrices(rotationX(toRadians(tip)), rotationY(toRadians(turn)));
+            return multiplyMatrices(translation(0, lift, 0), turned);
+        }
+
+        // An arrow of length 1 pointing from the floor towards the Sun.
+        function makeSunDirection(height, direction) {
+            const h = toRadians(height);
+            const d = toRadians(direction);
+
+            return [
+                Math.cos(h) * Math.cos(d),
+                Math.sin(h),
+                Math.cos(h) * Math.sin(d)
+            ];
+        }
+
+        // How does a point fall to the floor along a ray of light?
+        //   shadow x = x + y * sunX     the higher the point, the further it lands
+        //   shadow y = 0                everything lands on the floor
+        //   shadow z = z + y * sunZ
+        function makeShadowMatrix(height, direction) {
+            const sun = makeSunDirection(height, direction);
+            const sunX = -sun[0] / sun[1];
+            const sunZ = -sun[2] / sun[1];
+
+            return [
+                [1, sunX, 0, 0],
+                [0, 0,    0, 0],
+                [0, sunZ, 1, 0],
+                [0, 0,    0, 1]
+            ];
+        }
+
+        function currentCubeMatrix() {
+            return makeCubeMatrix(getValue('turn'), getValue('tip'), getValue('lift'));
+        }
+
+        function currentShadowMatrix() {
+            return makeShadowMatrix(getValue('sunHeight'), getValue('sunDirection'));
+        }
+
+        // =====================================================
+        // 3. DRAWING
+        // =====================================================
+
+        // Look at the middle of the scene, a little above the floor.
+        function viewMatrix() {
+            const cameraTurn = multiplyMatrices(rotationX(viewAngleX), rotationY(viewAngleY));
+            return multiplyMatrices(cameraTurn, translation(0, -120, 0));
+        }
+
+        // Perspective, like Canvas 4.2: screenX = f * x / z
+        function project(point) {
+            const [x, y, z] = transformPoint(point, viewMatrix());
+            const depth = z + cameraDistance;
+            const scale = focalLength / depth;
+
+            return {
+                x: canvas.width / 2 + x * scale,
+                y: canvas.height / 2 - y * scale,
+                depth,
+                scale
+            };
+        }
+
+        function tracePolygon(points) {
+            ctx.beginPath();
+            points.forEach((point, index) => {
+                if (index === 0) {
+                    ctx.moveTo(point.x, point.y);
+                } else {
+                    ctx.lineTo(point.x, point.y);
+                }
+            });
+            ctx.closePath();
+        }
+
+        function drawLine(A, B, color, width) {
+            ctx.strokeStyle = color;
+            ctx.lineWidth = width;
+            ctx.beginPath();
+            ctx.moveTo(A.x, A.y);
+            ctx.lineTo(B.x, B.y);
+            ctx.stroke();
+        }
+
+        function floorCorners() {
+            return [
+                [-floorSize, 0, -floorSize],
+                [ floorSize, 0, -floorSize],
+                [ floorSize, 0,  floorSize],
+                [-floorSize, 0,  floorSize]
+            ].map(project);
+        }
+
+        function drawFloor() {
+            tracePolygon(floorCorners());
+            ctx.fillStyle = '#f8fafc';
+            ctx.fill();
+
+            for (let i = -floorSize; i <= floorSize; i += 70) {
+                drawLine(project([i, 0, -floorSize]), project([i, 0, floorSize]), '#cbd5e1', 1);
+                drawLine(project([-floorSize, 0, i]), project([floorSize, 0, i]), '#cbd5e1', 1);
+            }
+        }
+
+        // A shadow is the 6 faces squashed flat. Painted in one colour,
+        // they join up into one shape. The floor's edge cuts it off.
+        function drawShadow(matrix, color) {
+            ctx.save();
+            tracePolygon(floorCorners());
+            ctx.clip();
+
+            for (const face of faces) {
+                tracePolygon(face.map(i => project(transformPoint(corners[i], matrix))));
+                ctx.fillStyle = color;
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 1;
+                ctx.fill();
+                ctx.stroke();
+            }
+
+            ctx.restore();
+        }
+
+        function drawCube(cubeMatrix) {
+            // Far faces are painted first, so near faces cover them.
+            const paintList = faces.map((face, index) => {
+                const points = face.map(i => project(transformPoint(corners[i], cubeMatrix)));
+                const depth = points.reduce((sum, point) => sum + point.depth, 0) / points.length;
+                return { points, depth, color: faceColors[index % faceColors.length] };
+            });
+
+            paintList.sort((A, B) => B.depth - A.depth);
+
+            for (const { points, color } of paintList) {
+                tracePolygon(points);
+                ctx.fillStyle = color;
+                ctx.strokeStyle = '#1f2937';
+                ctx.lineWidth = 2;
+                ctx.fill();
+                ctx.stroke();
+            }
+        }
+
+        function drawRays(cubeMatrix, shadowMatrix) {
+            for (const corner of corners) {
+                const onCube = transformPoint(corner, cubeMatrix);
+                const onFloor = transformPoint(onCube, shadowMatrix);
+                drawLine(project(onCube), project(onFloor), 'rgba(202, 138, 4, 0.55)', 1);
+            }
+        }
+
+        function drawDot(point, color) {
+            ctx.fillStyle = color;
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(point.x, point.y, 6, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+        }
+
+        function drawSun() {
+            const sun = makeSunDirection(getValue('sunHeight'), getValue('sunDirection'));
+            const point = project([sun[0] * 480, sun[1] * 480, sun[2] * 480]);
+
+            ctx.shadowColor = '#fbbf24';
+            ctx.shadowBlur = 30;
+            ctx.fillStyle = '#fbbf24';
+            ctx.beginPath();
+            ctx.arc(point.x, point.y, 30 * point.scale, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+        }
+
+        function draw() {
+            const cubeMatrix = currentCubeMatrix();
+            const shadowMatrix = currentShadowMatrix();
+
+            // This one line is the whole idea of the program.
+            const shadowOfCube = multiplyMatrices(shadowMatrix, cubeMatrix);
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            drawSun();
+            drawFloor();
+
+            if (target) {
+                drawShadow(target, '#4ade80');
+            }
+
+            drawShadow(shadowOfCube, '#475569');
+
+            if (rays.checked) {
+                drawRays(cubeMatrix, shadowMatrix);
+            }
+
+            const cornerOnFloor = transformPoint(corners[followedCorner], shadowOfCube);
+            const cornerOnCube = transformPoint(corners[followedCorner], cubeMatrix);
+
+            if (!hideCube.checked) {
+                drawCube(cubeMatrix);
+                drawDot(project(cornerOnCube), '#ea580c');
+            }
+
+            // A very long shadow can run past the edge of the floor.
+            if (Math.abs(cornerOnFloor[0]) < floorSize && Math.abs(cornerOnFloor[2]) < floorSize) {
+                drawDot(project(cornerOnFloor), '#ea580c');
+            }
+
+            showNumbers(shadowMatrix, cornerOnCube, cornerOnFloor);
+
+            if (target && !solved) {
+                solved = shadowsMatch(target, shadowOfCube);
+            }
+
+            showMessage();
+        }
+
+        function showNumbers(shadowMatrix, cornerOnCube, cornerOnFloor) {
+            document.getElementById('shadowNumbers').innerHTML = shadowMatrix.map((row, rowIndex) => {
+                // Tiny numbers like -0.0001 are shown as a plain 0.00.
+                const text = row.map(value => (Math.abs(value) < 0.005 ? 0 : value).toFixed(2).padStart(7)).join('');
+                return rowIndex === 1 ? `<span class="flat">${text}</span>` : text;
+            }).join('\n');
+
+            const write = point => point.map(value => (Math.abs(value) < 0.05 ? 0 : value).toFixed(0).padStart(6)).join('');
+
+            document.getElementById('cornerNumbers').textContent =
+                '           x     y     z\n' +
+                'Corner ' + write(cornerOnCube) + '\n' +
+                'Shadow ' + write(cornerOnFloor);
+
+            for (const name of sliderNames) {
+                const unit = name === 'lift' ? '' : '°';
+                document.getElementById(name + 'Value').textContent = getValue(name).toFixed(0) + unit;
+            }
+        }
+
+        function showMessage() {
+            let text;
+
+            if (solved) {
+                text = 'You matched it! Press "New puzzle" to play again.';
+            } else if (target) {
+                text = 'Cover the green shadow with the grey one, using Turn cube, Lift cube and Sun direction.';
+            } else if (getValue('sunHeight') > 89) {
+                text = 'The Sun is straight above, so light falls straight down. Try "Lift cube": the shadow does not move at all!';
+            } else if (getValue('sunHeight') < 35) {
+                text = 'A low Sun makes a long shadow, like late in the day. Light hits the cube from the side, so the shadow lands far away.';
+            } else {
+                text = 'Watch the shape of the shadow as the cube turns. Lift the cube, and move the Sun: what changes, and what stays the same?';
+            }
+
+            message.textContent = text;
+            message.className = solved ? 'won' : '';
+        }
+
+        // =====================================================
+        // 4. THE SHADOW PUZZLE
+        // =====================================================
+
+        function closestDistance(point, others) {
+            return Math.min(...others.map(other =>
+                Math.hypot(point[0] - other[0], point[2] - other[2])
+            ));
+        }
+
+        // Two shadows match if every corner of one lands near a corner of the other.
+        function shadowsMatch(matrixA, matrixB) {
+            const pointsA = corners.map(corner => transformPoint(corner, matrixA));
+            const pointsB = corners.map(corner => transformPoint(corner, matrixB));
+            const closeEnough = 14;
+
+            return pointsA.every(point => closestDistance(point, pointsB) < closeEnough)
+                && pointsB.every(point => closestDistance(point, pointsA) < closeEnough);
+        }
+
+        function staysOnFloor(matrix) {
+            return corners.every(corner => {
+                const [x, , z] = transformPoint(corner, matrix);
+                return Math.abs(x) < floorSize - 30 && Math.abs(z) < floorSize - 30;
+            });
+        }
+
+        function setPuzzleLocks(locked) {
+            for (const name of ['tip', 'sunHeight']) {
+                document.getElementById(name).disabled = locked;
+            }
+
+            spin.disabled = locked;
+            hexagonButton.disabled = locked;
+        }
+
+        function startPuzzle() {
+            spin.checked = false;
+            setValue('tip', 20);
+            setValue('sunHeight', 55);
+            setPuzzleLocks(true);
+
+            const current = multiplyMatrices(currentShadowMatrix(), currentCubeMatrix());
+
+            // Pick a random shadow that fits on the floor and isn't already solved.
+            do {
+                const cube = makeCubeMatrix(Math.random() * 360, 20, 130 + Math.random() * 150);
+                const shadow = makeShadowMatrix(55, Math.random() * 360);
+                target = multiplyMatrices(shadow, cube);
+            } while (!staysOnFloor(target) || shadowsMatch(target, current));
+
+            solved = false;
+            puzzleButton.textContent = 'New puzzle';
+        }
+
+        function stopPuzzle() {
+            target = null;
+            solved = false;
+            setPuzzleLocks(false);
+            puzzleButton.textContent = 'Shadow puzzle';
+        }
+
+        // =====================================================
+        // 5. BUTTONS, SLIDERS AND MOUSE
+        // =====================================================
+
+        function resetEverything() {
+            stopPuzzle();
+
+            for (const name of sliderNames) {
+                setValue(name, startValues[name]);
+            }
+
+            spin.checked = true;
+            rays.checked = true;
+            hideCube.checked = false;
+        }
+
+        let lastTime = null;
+
+        function animate(time) {
+            if (lastTime !== null && spin.checked) {
+                const dt = Math.min((time - lastTime) / 1000, 0.04);
+                setValue('turn', (getValue('turn') + 30 * dt) % 360);
+                setValue('tip', (getValue('tip') + 17 * dt) % 360);
+            }
+
+            lastTime = time;
+            draw();
+            requestAnimationFrame(animate);
+        }
+
+        // Moving a cube slider by hand stops the spinning.
+        for (const name of ['turn', 'tip']) {
+            document.getElementById(name).addEventListener('input', function () {
+                spin.checked = false;
+            });
+        }
+
+        // With the Sun straight above, a tipped cube stands on one corner:
+        // its outline, seen from above, has six sides.
+        hexagonButton.addEventListener('click', function () {
+            spin.checked = false;
+            setValue('turn', 45);
+            setValue('tip', 54.74);
+            setValue('sunHeight', 90);
+        });
+
+        puzzleButton.addEventListener('click', startPuzzle);
+        document.getElementById('reset').addEventListener('click', resetEverything);
+
+        canvas.addEventListener('pointerdown', function (event) {
+            canvas.setPointerCapture(event.pointerId);
+        });
+
+        canvas.addEventListener('pointermove', function (event) {
+            if (canvas.hasPointerCapture(event.pointerId)) {
+                viewAngleY -= event.movementX * 0.01;
+
+                // Stay above the floor: the shadow is painted on top of it.
+                viewAngleX = Math.max(-1.5, Math.min(-0.1, viewAngleX - event.movementY * 0.01));
+            }
+        });
+
+        resetEverything();
+        requestAnimationFrame(animate);
+    </script>
+</body>
+</html>

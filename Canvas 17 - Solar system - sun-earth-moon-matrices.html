@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Solar System Matrices</title>
+    <style>
+        body {
+            max-width: 800px;
+            margin: 24px auto;
+            padding: 0 16px;
+            font-family: system-ui, sans-serif;
+            color: #1f2937;
+            background: white;
+        }
+
+        h2 {
+            margin-bottom: 6px;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: auto;
+            border: 1px solid #cbd5e1;
+            background: #0f172a;
+            cursor: grab;
+            touch-action: none;
+        }
+
+        .rule {
+            padding: 10px 14px;
+            margin: 12px 0;
+            background: #fef9c3;
+            border-left: 5px solid #facc15;
+            font-size: 18px;
+        }
+
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 12px;
+            margin: 14px 0;
+        }
+
+        button {
+            padding: 7px 11px;
+            font: inherit;
+        }
+
+        #experimentText {
+            min-height: 3em;
+        }
+
+        .matrices {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 28px;
+        }
+
+        .matrices h3 {
+            margin: 0 0 4px;
+            font-size: 16px;
+        }
+
+        pre {
+            margin: 0;
+            padding: 8px 10px;
+            background: #f1f5f9;
+            font-family: ui-monospace, monospace;
+            font-size: 15px;
+            line-height: 1.5;
+        }
+
+        .position {
+            color: #c2410c;
+            font-weight: bold;
+        }
+
+        .note {
+            color: #475569;
+            font-size: 15px;
+        }
+
+        code {
+            font-family: ui-monospace, monospace;
+            overflow-wrap: anywhere;
+        }
+    </style>
+</head>
+<body>
+    <h2>Solar system: objects that carry other objects</h2>
+
+    <div class="rule">
+        <b>The one rule:</b> the Moon goes where the Earth goes, plus its own circle.<br>
+        <code>moon = earth &times; moonOrbit</code>
+    </div>
+
+    <canvas id="canvas" width="800" height="600"></canvas>
+
+    <div class="controls">
+        <button id="play">Pause</button>
+        <button id="reset">Reset</button>
+        <label><input id="swapOrder" type="checkbox"> Swap the order</label>
+        <label><input id="stopEarth" type="checkbox"> Stop the Earth</label>
+        <label><input id="rideEarth" type="checkbox"> Ride with the Earth</label>
+    </div>
+
+    <p id="experimentText"></p>
+
+    <div class="matrices">
+        <div>
+            <h3>Earth's matrix</h3>
+            <pre id="earthMatrix"></pre>
+        </div>
+        <div>
+            <h3>Moon's matrix</h3>
+            <pre id="moonMatrix"></pre>
+        </div>
+    </div>
+
+    <p class="note">
+        The <span class="position">orange column</span> is where the planet is: x, y and z.
+        The other numbers say how it is turned, and the little stick on each planet shows that turn.
+        Drag the picture to look around.
+    </p>
+
+    <h3>Try it yourself</h3>
+    <p class="note">
+        Open this file in an editor and find <code>buildSolarSystem</code>:<br>
+        1. Give the Moon a satellite. Add this line to the list of bodies:<br>
+        <code>{ name: 'Satellite', matrix: multiplyMatrices(moon, orbit(moonAngle * 3, 25)), radius: 4, color: '#f472b6' },</code><br>
+        2. Add a planet that only follows the Sun:<br>
+        <code>{ name: 'Venus', matrix: orbit(earthAngle * 1.6, 170), radius: 20, color: '#fb923c' },</code><br>
+        3. Tilt the Moon's circle. Change its line to:<br>
+        <code>const moon = multiplyMatrices(earth, multiplyMatrices(rotationX(0.5), orbit(moonAngle, 70)));</code><br>
+        4. Harder: give Venus a moon of its own.
+    </p>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const playButton = document.getElementById('play');
+        const swapOrder = document.getElementById('swapOrder');
+        const stopEarth = document.getElementById('stopEarth');
+        const rideEarth = document.getElementById('rideEarth');
+
+        // How far each planet has travelled round its circle, in radians.
+        let earthAngle = 0;
+        let moonAngle = 0;
+
+        // How fast they travel, in radians per second.
+        const earthSpeed = 0.4;
+        const moonSpeed = 2.4;
+
+        let running = true;
+        let lastTime = null;
+        let bodies = [];
+        let trails = {};
+
+        // The camera. Drag the picture to change these angles.
+        let viewAngleX = -0.45;
+        let viewAngleY = 0;
+        const cameraDistance = 1100;
+        const focalLength = 900;
+
+        // Stars are just dots on the screen, far behind everything.
+        const stars = [];
+        for (let i = 0; i < 90; i++) {
+            stars.push([Math.random() * canvas.width, Math.random() * canvas.height]);
+        }
+
+        // =====================================================
+        // 1. MATRICES: now they are 4 x 4.
+        //
+        // A 3 x 3 matrix can turn a 3D point, but it cannot move it.
+        // One extra column lets ONE matrix do both.
+        // The last column is the "move" part: x, y and z.
+        // =====================================================
+
+        function translation(x, y, z) {
+            return [
+                [1, 0, 0, x],
+                [0, 1, 0, y],
+                [0, 0, 1, z],
+                [0, 0, 0, 1]
+            ];
+        }
+
+        function rotationX(angle) {
+            const cos = Math.cos(angle);
+            const sin = Math.sin(angle);
+
+            return [
+                [1, 0,    0,    0],
+                [0, cos, -sin,  0],
+                [0, sin,  cos,  0],
+                [0, 0,    0,    1]
+            ];
+        }
+
+        function rotationY(angle) {
+            const cos = Math.cos(angle);
+            const sin = Math.sin(angle);
+
+            return [
+                [ cos, 0, sin, 0],
+                [ 0,   1, 0,   0],
+                [-sin, 0, cos, 0],
+                [ 0,   0, 0,   1]
+            ];
+        }
+
+        function multiplyMatrices(A, B) {
+            const result = [
+                [0, 0, 0, 0],
+                [0, 0, 0, 0],
+                [0, 0, 0, 0],
+                [0, 0, 0, 0]
+            ];
+
+            for (let row = 0; row < 4; row++) {
+                for (let col = 0; col < 4; col++) {
+                    for (let k = 0; k < 4; k++) {
+                        result[row][col] += A[row][k] * B[k][col];
+                    }
+                }
+            }
+
+            return result;
+        }
+
+        function transformPoint(point, matrix) {
+            const [x, y, z] = point;
+
+            return [
+                x * matrix[0][0] + y * matrix[0][1] + z * matrix[0][2] + matrix[0][3],
+                x * matrix[1][0] + y * matrix[1][1] + z * matrix[1][2] + matrix[1][3],
+                x * matrix[2][0] + y * matrix[2][1] + z * matrix[2][2] + matrix[2][3]
+            ];
+        }
+
+        // Where is the object? Just read the last column.
+        function positionOf(matrix) {
+            return [matrix[0][3], matrix[1][3], matrix[2][3]];
+        }
+
+        // =====================================================
+        // 2. THE SOLAR SYSTEM: this is the heart of the program.
+        // =====================================================
+
+        // Read a matrix multiplication from RIGHT to LEFT:
+        //
+        // turn x move = first move away, then turn   -> flies round a circle
+        // move x turn = first turn, then move away   -> spins on the spot
+        function orbit(angle, distance) {
+            const turn = rotationY(angle);
+            const move = translation(distance, 0, 0);
+
+            if (swapOrder.checked) {
+                return multiplyMatrices(move, turn);
+            }
+
+            return multiplyMatrices(turn, move);
+        }
+
+        function buildSolarSystem() {
+            // The Sun stays in the middle of the room.
+            const sun = translation(0, 0, 0);
+
+            // The Earth circles the middle of the room.
+            const earth = orbit(earthAngle, 300);
+
+            // The Moon starts from the Earth's matrix, so it goes wherever
+            // the Earth goes. Then it adds its own small circle.
+            const moon = multiplyMatrices(earth, orbit(moonAngle, 70));
+
+            return [
+                { name: 'Sun',   matrix: sun,   radius: 60, color: '#fbbf24' },
+                { name: 'Earth', matrix: earth, radius: 28, color: '#38bdf8' },
+                { name: 'Moon',  matrix: moon,  radius: 11, color: '#cbd5e1' },
+            ];
+        }
+
+        function getBody(name) {
+            return bodies.find(body => body.name === name);
+        }
+
+        // =====================================================
+        // 3. EVERY MOMENT: change the angles and leave a trail.
+        // =====================================================
+
+        function update(dt) {
+            if (!stopEarth.checked) {
+                earthAngle += earthSpeed * dt;
+            }
+
+            moonAngle += moonSpeed * dt;
+        }
+
+        // To ride with the Earth, we move the whole world the opposite way.
+        // The Earth lands in the middle, and everything else shifts with it.
+        function moveWorldMatrix() {
+            if (!rideEarth.checked) {
+                return translation(0, 0, 0);
+            }
+
+            const [x, y, z] = positionOf(getBody('Earth').matrix);
+            return translation(-x, -y, -z);
+        }
+
+        // Each body remembers where it has been, as seen by the camera.
+        function recordTrails() {
+            const moveWorld = moveWorldMatrix();
+
+            for (const body of bodies) {
+                const point = transformPoint(positionOf(body.matrix), moveWorld);
+                const trail = trails[body.name] || (trails[body.name] = []);
+                const last = trail[trail.length - 1];
+
+                // Add a point only if the body really moved.
+                if (!last || Math.hypot(point[0] - last[0], point[1] - last[1], point[2] - last[2]) > 4) {
+                    trail.push(point);
+                }
+
+                if (trail.length > 800) {
+                    trail.shift();
+                }
+            }
+        }
+
+        // =====================================================
+        // 4. DRAWING
+        // =====================================================
+
+        // Perspective, like Canvas 4.2: screenX = f * x / z
+        function project(point, matrix) {
+            const [x, y, z] = transformPoint(point, matrix);
+            const depth = z + cameraDistance;
+            const scale = focalLength / depth;
+
+            return {
+                x: canvas.width / 2 + x * scale,
+                y: canvas.height / 2 - y * scale,
+                depth,
+                scale
+            };
+        }
+
+        function drawStars() {
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+
+            for (const [x, y] of stars) {
+                ctx.fillRect(x, y, 2, 2);
+            }
+        }
+
+        function drawTrail(trail, color, cameraTurn) {
+            if (!trail || trail.length < 2) {
+                return;
+            }
+
+            ctx.strokeStyle = color;
+            ctx.globalAlpha = 0.5;
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+
+            trail.forEach((point, index) => {
+                const screen = project(point, cameraTurn);
+
+                if (index === 0) {
+                    ctx.moveTo(screen.x, screen.y);
+                } else {
+                    ctx.lineTo(screen.x, screen.y);
+                }
+            });
+
+            ctx.stroke();
+            ctx.globalAlpha = 1;
+        }
+
+        function drawBall(point, radius, color, glows) {
+            const r = radius * point.scale;
+
+            ctx.shadowColor = color;
+            ctx.shadowBlur = glows ? 40 : 0;
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.arc(point.x, point.y, r, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+        }
+
+        function drawStick(from, to) {
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(from.x, from.y);
+            ctx.lineTo(to.x, to.y);
+            ctx.stroke();
+        }
+
+        function drawBody(body, view) {
+            const planetToScreen = multiplyMatrices(view, body.matrix);
+            const center = project([0, 0, 0], planetToScreen);
+
+            // The stick is part of the planet: the planet's own matrix moves it.
+            // If its tip is further away than the planet, paint it first.
+            const stickStart = project([body.radius * 0.8, 0, 0], planetToScreen);
+            const stickTip = project([body.radius * 1.7, 0, 0], planetToScreen);
+            const hasStick = body.name !== 'Sun';
+            const stickBehind = stickTip.depth > center.depth;
+
+            if (hasStick && stickBehind) {
+                drawStick(stickStart, stickTip);
+            }
+
+            drawBall(center, body.radius, body.color, body.name === 'Sun');
+
+            if (hasStick && !stickBehind) {
+                drawStick(stickStart, stickTip);
+            }
+        }
+
+        // Names are painted after all the planets, so nothing can cover them.
+        function drawLabel(body, view) {
+            const center = project(positionOf(body.matrix), view);
+            const offset = body.radius * center.scale + 5;
+
+            ctx.font = '15px system-ui, sans-serif';
+            ctx.strokeStyle = '#0f172a';
+            ctx.lineWidth = 4;
+            ctx.strokeText(body.name, center.x + offset, center.y + offset);
+            ctx.fillStyle = 'white';
+            ctx.fillText(body.name, center.x + offset, center.y + offset);
+        }
+
+        function matrixToHtml(matrix) {
+            return matrix.map(row => row.map((value, col) => {
+                const isPosition = col === 3;
+                const text = value.toFixed(isPosition ? 0 : 2).padStart(6);
+                return isPosition ? `<span class="position">${text}</span>` : text;
+            }).join('')).join('\n');
+        }
+
+        function draw() {
+            const cameraTurn = multiplyMatrices(rotationX(viewAngleX), rotationY(viewAngleY));
+            const view = multiplyMatrices(cameraTurn, moveWorldMatrix());
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawStars();
+
+            for (const body of bodies) {
+                drawTrail(trails[body.name], body.color, cameraTurn);
+            }
+
+            // Far things are painted first, so near things cover them.
+            const sorted = [...bodies].sort((A, B) =>
+                project(positionOf(B.matrix), view).depth - project(positionOf(A.matrix), view).depth
+            );
+
+            for (const body of sorted) {
+                drawBody(body, view);
+            }
+
+            for (const body of bodies) {
+                drawLabel(body, view);
+            }
+
+            document.getElementById('earthMatrix').innerHTML = matrixToHtml(getBody('Earth').matrix);
+            document.getElementById('moonMatrix').innerHTML = matrixToHtml(getBody('Moon').matrix);
+        }
+
+        // =====================================================
+        // 5. THE EXPERIMENTS, BUTTONS AND MOUSE
+        // =====================================================
+
+        function explainExperiment() {
+            const lines = [];
+
+            if (swapOrder.checked) {
+                lines.push('Same two matrices, opposite order: move x turn. The Earth spins on the spot (watch its stick). The Moon has lost its own circle and is only carried by the Earth\'s turn.');
+            }
+
+            if (stopEarth.checked) {
+                lines.push('The Earth stopped, so its matrix stopped changing. The Moon keeps doing its own part.');
+            }
+
+            if (rideEarth.checked) {
+                lines.push('We move the whole world so the Earth stays in the middle. Now the Sun seems to circle us, and the Moon\'s wavy path becomes a simple circle. The matrices below still work the same way: only our view changed.');
+            }
+
+            if (lines.length === 0) {
+                lines.push('The Moon makes a wavy path: its own circle added on top of the Earth\'s big circle. Try the three switches above!');
+            }
+
+            document.getElementById('experimentText').textContent = lines.join(' ');
+        }
+
+        // A new experiment starts with clean trails.
+        function startExperiment() {
+            trails = {};
+            bodies = buildSolarSystem();
+            explainExperiment();
+        }
+
+        function setRunning(value) {
+            running = value;
+            playButton.textContent = running ? 'Pause' : 'Play';
+        }
+
+        function animate(time) {
+            if (running) {
+                if (lastTime !== null) {
+                    update(Math.min((time - lastTime) / 1000, 0.04));
+                }
+                lastTime = time;
+            } else {
+                lastTime = null;
+            }
+
+            bodies = buildSolarSystem();
+
+            if (running) {
+                recordTrails();
+            }
+
+            draw();
+            requestAnimationFrame(animate);
+        }
+
+        playButton.addEventListener('click', function () {
+            setRunning(!running);
+        });
+
+        document.getElementById('reset').addEventListener('click', function () {
+            earthAngle = 0;
+            moonAngle = 0;
+            swapOrder.checked = false;
+            stopEarth.checked = false;
+            rideEarth.checked = false;
+            startExperiment();
+        });
+
+        swapOrder.addEventListener('change', startExperiment);
+        stopEarth.addEventListener('change', startExperiment);
+        rideEarth.addEventListener('change', startExperiment);
+
+        canvas.addEventListener('pointerdown', function (event) {
+            canvas.setPointerCapture(event.pointerId);
+        });
+
+        canvas.addEventListener('pointermove', function (event) {
+            if (canvas.hasPointerCapture(event.pointerId)) {
+                viewAngleY -= event.movementX * 0.01;
+                viewAngleX -= event.movementY * 0.01;
+            }
+        });
+
+        startExperiment();
+        requestAnimationFrame(animate);
+    </script>
+</body>
+</html>
