@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Cube Corner Lines</title>
+    <style>
+        body {
+            max-width: 800px;
+            margin: 24px auto;
+            padding: 0 16px;
+            font-family: system-ui, sans-serif;
+            color: #1f2937;
+            background: white;
+        }
+
+        h2 {
+            margin-bottom: 6px;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: auto;
+            border: 1px solid #cbd5e1;
+            background: #f8fafc;
+        }
+
+        .rule {
+            padding: 10px 14px;
+            margin: 12px 0;
+            background: #fef9c3;
+            border-left: 5px solid #facc15;
+            font-size: 18px;
+            line-height: 1.6;
+        }
+
+        .lines {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 12px;
+            margin: 14px 0;
+        }
+
+        .card {
+            padding: 10px 12px;
+            border-radius: 6px;
+            background: #f1f5f9;
+            border-top: 5px solid;
+        }
+
+        .card h3 {
+            margin: 0 0 6px;
+            font-size: 17px;
+        }
+
+        .card p {
+            margin: 4px 0;
+        }
+
+        .sliders {
+            display: grid;
+            grid-template-columns: auto 1fr 3em;
+            align-items: center;
+            gap: 6px 12px;
+            margin: 14px 0;
+        }
+
+        .sliders input {
+            width: 100%;
+            margin: 0;
+        }
+
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin: 10px 0;
+        }
+
+        pre {
+            margin: 0;
+            padding: 10px 12px;
+            background: #f1f5f9;
+            font-family: ui-monospace, monospace;
+            font-size: 16px;
+            line-height: 1.7;
+            overflow-x: auto;
+        }
+
+        code {
+            font-family: ui-monospace, monospace;
+        }
+
+        .x { color: #dc2626; font-weight: bold; }
+        .y { color: #16a34a; font-weight: bold; }
+        .z { color: #2563eb; font-weight: bold; }
+
+        .note {
+            color: #475569;
+            font-size: 15px;
+        }
+
+        table {
+            border-collapse: collapse;
+            font-family: ui-monospace, monospace;
+            font-size: 15px;
+        }
+
+        th, td {
+            padding: 4px 10px;
+            border-bottom: 1px solid #e2e8f0;
+            text-align: right;
+        }
+    </style>
+</head>
+<body>
+    <h2>One corner of a cube: three lines, x, y and z</h2>
+
+    <div class="rule">
+        <b>A point in 3D is three numbers: (x, y, z).</b><br>
+        To get there from the corner: go <span class="x">x</span> steps right,
+        <span class="y">y</span> steps up, and <span class="z">z</span> steps into the screen.
+    </div>
+
+    <canvas id="canvas" width="700" height="480"></canvas>
+
+    <div class="lines">
+        <div class="card" style="border-color: #dc2626">
+            <h3 class="x">The x line</h3>
+            <p>From (0, 0, 0) to (200, <b>0</b>, <b>0</b>).</p>
+            <p>Only x changes. y and z stay 0.</p>
+        </div>
+        <div class="card" style="border-color: #16a34a">
+            <h3 class="y">The y line</h3>
+            <p>From (0, 0, 0) to (<b>0</b>, 200, <b>0</b>).</p>
+            <p>Only y changes. x and z stay 0.</p>
+        </div>
+        <div class="card" style="border-color: #2563eb">
+            <h3 class="z">The z line</h3>
+            <p>From (0, 0, 0) to (<b>0</b>, <b>0</b>, 200).</p>
+            <p>Only z changes. x and y stay 0.</p>
+        </div>
+    </div>
+
+    <h3>But the screen is flat!</h3>
+    <p>
+        The screen only has two directions: right and down. Right and up are easy.
+        For "into the screen" we use a trick: we draw it as a <b>slanted line</b>.
+        Every step into the screen moves the pen a little to the right and a little up.
+        This is how you draw a box on paper, too.
+    </p>
+
+    <div class="rule">
+        screenX = cornerX + <span class="x">x</span> + <span class="z">z</span> &times; slant<br>
+        screenY = cornerY &minus; <span class="y">y</span> &minus; <span class="z">z</span> &times; slant
+    </div>
+    <p class="note">
+        Why minus? On a screen, y counts <b>down</b> from the top. To go up, we take away.
+    </p>
+
+    <h3>Build your own point</h3>
+    <p>Move the sliders. The dashed path walks to the point: first along x, then up y, then into z.</p>
+
+    <div class="sliders">
+        <label for="pointX" class="x">x</label>
+        <input id="pointX" type="range" min="0" max="200" step="10" value="150">
+        <span id="pointXValue"></span>
+
+        <label for="pointY" class="y">y</label>
+        <input id="pointY" type="range" min="0" max="200" step="10" value="60">
+        <span id="pointYValue"></span>
+
+        <label for="pointZ" class="z">z</label>
+        <input id="pointZ" type="range" min="0" max="200" step="10" value="140">
+        <span id="pointZValue"></span>
+
+        <label for="slant">slant</label>
+        <input id="slant" type="range" min="0.2" max="0.8" step="0.1" value="0.5">
+        <span id="slantValue"></span>
+    </div>
+
+    <div class="controls">
+        <label><input id="showCube" type="checkbox"> Show the whole cube</label>
+    </div>
+
+    <pre id="math"></pre>
+
+    <h3>The 8 corners of the cube</h3>
+    <p>
+        Every corner of a cube is just 0 or 200 for each of x, y and z.
+        The same two lines of math turn each one into a point on the screen.
+        Tick "Show the whole cube" to see them joined up.
+    </p>
+    <table id="corners"></table>
+
+    <p class="note">
+        Next, in Canvas 3, the cube is drawn the same way: its back square is its front square
+        moved a little right and a little up. That move is the <span class="z">z</span> &times; slant part.
+    </p>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Where the corner (0, 0, 0) is on the screen.
+        const corner = [220, 380];
+
+        // How long each line is.
+        const size = 200;
+
+        const colors = { x: '#dc2626', y: '#16a34a', z: '#2563eb' };
+
+        function getValue(id) {
+            return Number(document.getElementById(id).value);
+        }
+
+        // =====================================================
+        // THE MATH: turn a 3D point (x, y, z) into a 2D screen point.
+        // =====================================================
+
+        function toScreen(point) {
+            const [x, y, z] = point;
+            const slant = getValue('slant');
+
+            const screenX = corner[0] + x + z * slant;
+            const screenY = corner[1] - y - z * slant;
+
+            return [screenX, screenY];
+        }
+
+        // =====================================================
+        // DRAWING
+        // =====================================================
+
+        function drawLine(A, B, color, width, dashed = false) {
+            const a = toScreen(A);
+            const b = toScreen(B);
+
+            ctx.strokeStyle = color;
+            ctx.lineWidth = width;
+            ctx.setLineDash(dashed ? [6, 6] : []);
+            ctx.beginPath();
+            ctx.moveTo(a[0], a[1]);
+            ctx.lineTo(b[0], b[1]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
+        function drawArrowHead(from, to, color) {
+            const a = toScreen(from);
+            const b = toScreen(to);
+            const angle = Math.atan2(b[1] - a[1], b[0] - a[0]);
+
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.moveTo(b[0], b[1]);
+            ctx.lineTo(b[0] - 14 * Math.cos(angle - 0.4), b[1] - 14 * Math.sin(angle - 0.4));
+            ctx.lineTo(b[0] - 14 * Math.cos(angle + 0.4), b[1] - 14 * Math.sin(angle + 0.4));
+            ctx.closePath();
+            ctx.fill();
+        }
+
+        function drawDot(point, color, radius = 6) {
+            const [sx, sy] = toScreen(point);
+
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.arc(sx, sy, radius, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        function drawLabel(point, text, color, dx = 8, dy = -8) {
+            const [sx, sy] = toScreen(point);
+
+            ctx.fillStyle = color;
+            ctx.font = 'bold 16px system-ui, sans-serif';
+            ctx.fillText(text, sx + dx, sy + dy);
+        }
+
+        // A light grid on the floor (where y = 0) helps us see depth.
+        function drawFloorGrid() {
+            for (let i = 0; i <= size; i += 50) {
+                drawLine([i, 0, 0], [i, 0, size], '#e2e8f0', 1);
+                drawLine([0, 0, i], [size, 0, i], '#e2e8f0', 1);
+            }
+        }
+
+        // The cube: every corner is 0 or 200 for x, y and z.
+        function cubeCorners() {
+            const list = [];
+
+            for (const x of [0, size]) {
+                for (const y of [0, size]) {
+                    for (const z of [0, size]) {
+                        list.push([x, y, z]);
+                    }
+                }
+            }
+
+            return list;
+        }
+
+        function drawCube() {
+            const points = cubeCorners();
+
+            // Join two corners if they differ in exactly one number.
+            for (const A of points) {
+                for (const B of points) {
+                    const different = A.filter((value, i) => value !== B[i]).length;
+
+                    if (different === 1 && A < B) {
+                        drawLine(A, B, '#94a3b8', 1.5);
+                    }
+                }
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            drawFloorGrid();
+
+            if (document.getElementById('showCube').checked) {
+                drawCube();
+            }
+
+            // The three lines from the corner.
+            const origin = [0, 0, 0];
+            const ends = { x: [size, 0, 0], y: [0, size, 0], z: [0, 0, size] };
+
+            for (const name of ['x', 'y', 'z']) {
+                drawLine(origin, ends[name], colors[name], 4);
+                drawArrowHead(origin, ends[name], colors[name]);
+                drawLabel(ends[name], `${name}  (${ends[name].join(', ')})`, colors[name]);
+            }
+
+            drawDot(origin, '#1f2937');
+            drawLabel(origin, '(0, 0, 0)', '#1f2937', -70, 22);
+
+            // The walk to the point P: along x, then up y, then into z.
+            const x = getValue('pointX');
+            const y = getValue('pointY');
+            const z = getValue('pointZ');
+
+            const afterX = [x, 0, 0];
+            const afterY = [x, y, 0];
+            const point = [x, y, z];
+
+            drawLine(origin, afterX, colors.x, 2.5, true);
+            drawLine(afterX, afterY, colors.y, 2.5, true);
+            drawLine(afterY, point, colors.z, 2.5, true);
+
+            drawDot(point, '#7c3aed', 8);
+            drawLabel(point, `P (${x}, ${y}, ${z})`, '#7c3aed', 12, -10);
+
+            showMath(x, y, z);
+        }
+
+        // =====================================================
+        // THE NUMBERS UNDER THE PICTURE
+        // =====================================================
+
+        function showMath(x, y, z) {
+            const slant = getValue('slant');
+            const [screenX, screenY] = toScreen([x, y, z]);
+            const zPart = z * slant;
+
+            const X = text => `<span class="x">${text}</span>`;
+            const Y = text => `<span class="y">${text}</span>`;
+            const Z = text => `<span class="z">${text}</span>`;
+
+            document.getElementById('math').innerHTML =
+                `P = (${X(x)}, ${Y(y)}, ${Z(z)})\n\n` +
+                `screenX = ${corner[0]} + ${X(x)} + ${Z(z)} &times; ${slant}\n` +
+                `        = ${corner[0]} + ${X(x)} + ${Z(round(zPart))} = <b>${round(screenX)}</b>\n\n` +
+                `screenY = ${corner[1]} &minus; ${Y(y)} &minus; ${Z(z)} &times; ${slant}\n` +
+                `        = ${corner[1]} &minus; ${Y(y)} &minus; ${Z(round(zPart))} = <b>${round(screenY)}</b>`;
+
+            document.getElementById('pointXValue').textContent = x;
+            document.getElementById('pointYValue').textContent = y;
+            document.getElementById('pointZValue').textContent = z;
+            document.getElementById('slantValue').textContent = slant;
+
+            const rows = cubeCorners().map(point => {
+                const [sx, sy] = toScreen(point);
+                return `<tr><td>(${point.join(', ')})</td><td>&rarr;</td><td>(${round(sx)}, ${round(sy)})</td></tr>`;
+            });
+
+            document.getElementById('corners').innerHTML =
+                '<tr><th>3D corner (x, y, z)</th><th></th><th>screen (x, y)</th></tr>' + rows.join('');
+        }
+
+        function round(value) {
+            return Math.round(value * 10) / 10;
+        }
+
+        for (const id of ['pointX', 'pointY', 'pointZ', 'slant', 'showCube']) {
+            document.getElementById(id).addEventListener('input', draw);
+        }
+
+        draw();
+    </script>
+</body>
+</html>
